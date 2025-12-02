@@ -1,6 +1,6 @@
 # Biofilm Multi-Scale Parameter Estimation
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%20|%203.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -60,7 +60,7 @@ This project implements a sophisticated hierarchical Bayesian framework for cali
 
 ### Requirements
 
-- Python 3.9 or higher
+- Python 3.9 or higher (tested on 3.9, 3.10, 3.11, 3.12)
 - NumPy, SciPy, Numba (JIT compilation)
 - Matplotlib (visualization)
 - Optional: pytest (testing), black (formatting)
