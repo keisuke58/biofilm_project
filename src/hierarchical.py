@@ -205,7 +205,10 @@ def hierarchical_case2(config=None) -> HierarchicalResults:
                 phi[:, 1]**2 * var_psi[:, 1] + psi[:, 1]**2 * var_phi[:, 1],
             ], axis=1)
             return log_likelihood_sparse(obs, obs_var, data_M1, sigma_obs)
-        except:
+        except (RuntimeError, np.linalg.LinAlgError, ValueError) as e:
+            # Catch numerical errors from solver/TSM
+            if config.get("verbose", False):
+                print(f"[M1] Likelihood evaluation failed for theta_M1: {type(e).__name__}: {e}")
             return -1e20
 
     def log_prior_M1(theta_M1):
@@ -257,7 +260,10 @@ def hierarchical_case2(config=None) -> HierarchicalResults:
                 phi[:, 3]**2 * var_psi[:, 3] + psi[:, 3]**2 * var_phi[:, 3],
             ], axis=1)
             return log_likelihood_sparse(obs, obs_var, data_M2, sigma_obs)
-        except:
+        except (RuntimeError, np.linalg.LinAlgError, ValueError) as e:
+            # Catch numerical errors from solver/TSM
+            if config.get("verbose", False):
+                print(f"[M2] Likelihood evaluation failed for theta_M2: {type(e).__name__}: {e}")
             return -1e20
 
     def log_prior_M2(theta_M2):
@@ -304,11 +310,14 @@ def hierarchical_case2(config=None) -> HierarchicalResults:
             obs = np.stack([phi[:, i]*psi[:, i] for i in range(4)], axis=1)
             var_phi, var_psi = tsm_res.sigma2[idx3, 0:4], tsm_res.sigma2[idx3, 5:9]
             obs_var = np.stack([
-                phi[:, i]**2 * var_psi[:, i] + psi[:, i]**2 * var_phi[:, i] 
+                phi[:, i]**2 * var_psi[:, i] + psi[:, i]**2 * var_phi[:, i]
                 for i in range(4)
             ], axis=1)
             return log_likelihood_sparse(obs, obs_var, data_M3, sigma_obs)
-        except:
+        except (RuntimeError, np.linalg.LinAlgError, ValueError) as e:
+            # Catch numerical errors from solver/TSM
+            if config.get("verbose", False):
+                print(f"[M3] Likelihood evaluation failed for theta_M3: {type(e).__name__}: {e}")
             return -1e20
 
     def log_prior_M3(theta_M3):
