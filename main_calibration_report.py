@@ -1,5 +1,6 @@
 # main_calibration.py
 import time
+import numpy as np
 
 from src.config import CONFIG, DEBUG, get_theta_true
 from src.hierarchical import hierarchical_case2
@@ -89,37 +90,43 @@ def main():
     viz = BayesianVisualizer("results")
 
     # --- M1 ---
-    viz.plot_posterior(results.tmcmc_M1.samples,
+    viz.plot_posterior(results.tmcmc_M1.samples[-1],  # Last stage samples
                        theta_true_M1,
                        labels_M1,
                        model_name="M1")
-    viz.plot_trace(results.tmcmc_M1.samples,
+    viz.plot_trace(results.tmcmc_M1.samples[-1],
                    labels_M1,
                    model_name="M1")
-    viz.plot_beta_schedule(results.tmcmc_M1.beta_list, model_name="M1")
-    viz.plot_logL(results.tmcmc_M1.logL_list, model_name="M1")
+    viz.plot_beta_schedule(results.tmcmc_M1.beta_schedule, model_name="M1")
+    # Convert logL_trace (List[np.ndarray]) to mean logL per stage
+    logL_mean_M1 = [np.mean(logL) for logL in results.tmcmc_M1.logL_trace]
+    viz.plot_logL(logL_mean_M1, model_name="M1")
 
     # --- M2 ---
-    viz.plot_posterior(results.tmcmc_M2.samples,
+    viz.plot_posterior(results.tmcmc_M2.samples[-1],  # Last stage samples
                        theta_true_M2,
                        labels_M2,
                        model_name="M2")
-    viz.plot_trace(results.tmcmc_M2.samples,
+    viz.plot_trace(results.tmcmc_M2.samples[-1],
                    labels_M2,
                    model_name="M2")
-    viz.plot_beta_schedule(results.tmcmc_M2.beta_list, model_name="M2")
-    viz.plot_logL(results.tmcmc_M2.logL_list, model_name="M2")
+    viz.plot_beta_schedule(results.tmcmc_M2.beta_schedule, model_name="M2")
+    # Convert logL_trace (List[np.ndarray]) to mean logL per stage
+    logL_mean_M2 = [np.mean(logL) for logL in results.tmcmc_M2.logL_trace]
+    viz.plot_logL(logL_mean_M2, model_name="M2")
 
     # --- M3 ---
-    viz.plot_posterior(results.tmcmc_M3.samples,
+    viz.plot_posterior(results.tmcmc_M3.samples[-1],  # Last stage samples
                        theta_true_M3,
                        labels_M3,
                        model_name="M3")
-    viz.plot_trace(results.tmcmc_M3.samples,
+    viz.plot_trace(results.tmcmc_M3.samples[-1],
                    labels_M3,
                    model_name="M3")
-    viz.plot_beta_schedule(results.tmcmc_M3.beta_list, model_name="M3")
-    viz.plot_logL(results.tmcmc_M3.logL_list, model_name="M3")
+    viz.plot_beta_schedule(results.tmcmc_M3.beta_schedule, model_name="M3")
+    # Convert logL_trace (List[np.ndarray]) to mean logL per stage
+    logL_mean_M3 = [np.mean(logL) for logL in results.tmcmc_M3.logL_trace]
+    viz.plot_logL(logL_mean_M3, model_name="M3")
 
     # ============================================================
     #  ② PDF REPORT (report.py)
@@ -144,27 +151,37 @@ def main():
     data_M3 = getattr(results, "data_M3", None)
 
     # --- M1 ---
+    # M1 uses true values for M2/M3 parameters (hierarchical structure)
+    theta_base_M1 = theta_true.copy()
     t_M1, phi_post_M1 = generate_posterior_phi_tsm(
         posterior_samples=results.tmcmc_M1.samples,
         CONFIG=CONFIG,
         model_id="M1",
         Ns=Ns_plot,
+        theta_base=theta_base_M1
     )
 
     # --- M2 ---
+    # M2 uses M1 posterior mean + true M3 parameters
+    theta_base_M2 = theta_true.copy()
+    theta_base_M2[0:5] = results.theta_M1_mean
     t_M2, phi_post_M2 = generate_posterior_phi_tsm(
         posterior_samples=results.tmcmc_M2.samples,
         CONFIG=CONFIG,
         model_id="M2",
         Ns=Ns_plot,
+        theta_base=theta_base_M2
     )
 
     # --- M3 ---
+    # M3 uses M1+M2 posterior means
+    theta_base_M3 = results.theta_final.copy()
     t_M3, phi_post_M3 = generate_posterior_phi_tsm(
         posterior_samples=results.tmcmc_M3.samples,
         CONFIG=CONFIG,
         model_id="M3",
         Ns=Ns_plot,
+        theta_base=theta_base_M3
     )
 
     # ============================================================
