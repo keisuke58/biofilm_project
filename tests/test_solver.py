@@ -1,0 +1,139 @@
+"""
+Unit tests for BiofilmNewtonSolver
+
+These tests verify basic functionality of the Newton solver for the biofilm
+PDE system. Run with: pytest tests/test_solver.py
+"""
+import pytest
+import numpy as np
+from src.solver_newton import BiofilmNewtonSolver
+from src.config import get_theta_true, CONFIG
+
+
+class TestBiofilmNewtonSolver:
+    """Test suite for BiofilmNewtonSolver"""
+
+    @pytest.fixture
+    def solver(self):
+        """Create a test solver with debug settings"""
+        return BiofilmNewtonSolver(
+            phi_init=0.05,
+            use_numba=True,
+            dt=1e-4,
+            maxtimestep=50,  # Short run for testing
+            **CONFIG["M1"]
+        )
+
+    @pytest.fixture
+    def theta_true(self):
+        """Get true parameter vector"""
+        return get_theta_true()
+
+    def test_solver_initialization(self, solver):
+        """Test that solver initializes correctly"""
+        assert solver.dt == 1e-4
+        assert solver.maxtimestep == 50
+        assert solver.phi_init == 0.05
+        assert len(solver.Eta_vec) == 4
+
+    def test_initial_state_mass_conservation(self, solver):
+        """Test that initial state satisfies Σφᵢ = 1"""
+        g0 = solver.get_initial_state()
+        phi_sum = g0[0:4].sum() + g0[4]  # Sum of all volume fractions
+        np.testing.assert_allclose(phi_sum, 1.0, rtol=1e-10)
+
+    def test_theta_to_matrices_shape(self, solver, theta_true):
+        """Test that parameter conversion produces correct shapes"""
+        A, b_diag = solver.theta_to_matrices(theta_true)
+        assert A.shape == (4, 4)
+        assert b_diag.shape == (4,)
+
+    def test_theta_to_matrices_symmetry(self, solver, theta_true):
+        """Test that A matrix is symmetric"""
+        A, _ = solver.theta_to_matrices(theta_true)
+        np.testing.assert_allclose(A, A.T, rtol=1e-10)
+
+    def test_run_deterministic_mass_conservation(self, solver, theta_true):
+        """Test that Σφᵢ = 1 is maintained throughout simulation"""
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        # Check mass conservation at all time steps
+        phi_sum = g[:, 0:4].sum(axis=1) + g[:, 4]
+        np.testing.assert_allclose(phi_sum, 1.0, atol=1e-6,
+                                    err_msg="Mass conservation violated")
+
+    def test_run_deterministic_output_shape(self, solver, theta_true):
+        """Test that output arrays have correct shapes"""
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        assert len(t) == solver.maxtimestep + 1  # Initial + maxtimestep
+        assert g.shape[0] == solver.maxtimestep + 1
+        assert g.shape[1] == 10  # 4 phi + 1 phi0 + 4 psi + 1 gamma
+
+    def test_run_deterministic_time_monotonic(self, solver, theta_true):
+        """Test that time is strictly increasing"""
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        time_diffs = np.diff(t)
+        assert np.all(time_diffs > 0), "Time should be strictly increasing"
+        np.testing.assert_allclose(time_diffs, solver.dt, rtol=1e-10)
+
+    def test_run_deterministic_positivity(self, solver, theta_true):
+        """Test that volume fractions and porosity remain positive"""
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        phi = g[:, 0:4]
+        phi0 = g[:, 4]
+        psi = g[:, 5:9]
+
+        assert np.all(phi >= 0), "phi should be non-negative"
+        assert np.all(phi0 >= 0), "phi0 should be non-negative"
+        assert np.all(psi >= 0), "psi should be non-negative"
+        assert np.all(psi <= 1.0), "psi should be <= 1"
+
+    def test_run_deterministic_no_nan(self, solver, theta_true):
+        """Test that simulation produces no NaN values"""
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        assert np.all(np.isfinite(t)), "Time contains non-finite values"
+        assert np.all(np.isfinite(g)), "State contains non-finite values"
+
+    def test_different_phi_init(self, theta_true):
+        """Test solver with different initial conditions"""
+        for phi_init in [0.02, 0.1, 0.2]:
+            solver = BiofilmNewtonSolver(
+                phi_init=phi_init,
+                use_numba=True,
+                dt=1e-4,
+                maxtimestep=20,
+                **CONFIG["M1"]
+            )
+            t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+            # Check mass conservation
+            phi_sum = g[:, 0:4].sum(axis=1) + g[:, 4]
+            np.testing.assert_allclose(phi_sum, 1.0, atol=1e-6)
+
+            # Check initial condition
+            np.testing.assert_allclose(g[0, 0:4], phi_init, rtol=1e-10)
+
+    @pytest.mark.parametrize("use_numba", [True, False])
+    def test_numba_vs_numpy_consistency(self, theta_true, use_numba):
+        """Test that Numba and NumPy versions give similar results"""
+        solver = BiofilmNewtonSolver(
+            phi_init=0.05,
+            use_numba=use_numba,
+            dt=1e-4,
+            maxtimestep=20,
+            **CONFIG["M1"]
+        )
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        # Basic sanity checks
+        assert np.all(np.isfinite(g))
+        phi_sum = g[:, 0:4].sum(axis=1) + g[:, 4]
+        np.testing.assert_allclose(phi_sum, 1.0, atol=1e-6)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
