@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Data
+data/*.pkl
+data/*.npz
+data/*.npy
+data/*.csv
+
+# Results
+results/*.png
+results/*.pdf
+results/*.txt
+
+# Backup
+*.bak
