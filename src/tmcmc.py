@@ -2,8 +2,11 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Callable
+import logging
 
 from .progress import ProgressTracker
+
+logger = logging.getLogger("biofilm.tmcmc")
 
 @dataclass
 class TMCMCResult:
@@ -87,7 +90,7 @@ def tmcmc(log_likelihood, log_prior, theta_init_samples, n_stages=15,
     # Initial likelihood evaluation
     # =========================================================================
     if show_progress:
-        print(f"    [{model_name}] Evaluating initial likelihoods ({N} samples)...")
+        logger.info(f"    [{model_name}] Evaluating initial likelihoods ({N} samples)...")
         try:
             from tqdm import tqdm
             pbar = tqdm(total=N, desc="Init logL", ncols=80)
@@ -113,12 +116,12 @@ def tmcmc(log_likelihood, log_prior, theta_init_samples, n_stages=15,
     logL_trace.append(logL.copy())
     
     # Print initial statistics
-    print(f"    [{model_name}] Initial logL: "
-          f"min={logL.min():.1f}, max={logL.max():.1f}, "
-          f"mean={logL.mean():.1f}, std={logL.std():.1f}")
-    
+    logger.info(f"    [{model_name}] Initial logL: "
+                f"min={logL.min():.1f}, max={logL.max():.1f}, "
+                f"mean={logL.mean():.1f}, std={logL.std():.1f}")
+
     if logL_scale != 1.0:
-        print(f"    [{model_name}] Using logL scaling factor: {logL_scale:.2f}")
+        logger.info(f"    [{model_name}] Using logL scaling factor: {logL_scale:.2f}")
 
     beta = 0.0
 
@@ -170,9 +173,9 @@ def tmcmc(log_likelihood, log_prior, theta_init_samples, n_stages=15,
         
         # Print stage info with delta_beta
         status = "🎯 CONVERGED!" if beta_next >= 1.0 else ""
-        print(f"    [{model_name}] Stage {stage}: "
-              f"β={beta_next:.4f}, Δβ={delta_beta:.4f}, "
-              f"ESS={ess:.1f}/{N} ({100*ess/N:.1f}%) {status}")
+        logger.info(f"    [{model_name}] Stage {stage}: "
+                    f"β={beta_next:.4f}, Δβ={delta_beta:.4f}, "
+                    f"ESS={ess:.1f}/{N} ({100*ess/N:.1f}%) {status}")
         
         beta_list.append(beta_next)
 
@@ -234,7 +237,7 @@ def tmcmc(log_likelihood, log_prior, theta_init_samples, n_stages=15,
 
         acceptance_rate = n_accepted / N
         acceptance_rates.append(acceptance_rate)
-        print(f"    [{model_name}] Acceptance rate: {100*acceptance_rate:.1f}%")
+        logger.info(f"    [{model_name}] Acceptance rate: {100*acceptance_rate:.1f}%")
         
         # Update current samples
         theta_curr = theta_new.copy()
@@ -253,13 +256,13 @@ def tmcmc(log_likelihood, log_prior, theta_init_samples, n_stages=15,
 
         # Check convergence
         if beta >= 1.0:
-            print(f"    [{model_name}] ✓ Converged at stage {stage}")
+            logger.info(f"    [{model_name}] ✓ Converged at stage {stage}")
             converged = True
             break
 
     if not converged:
-        print(f"    [{model_name}] ⚠ WARNING: Did not converge within {n_stages} stages "
-              f"(β={beta:.4f})")
+        logger.warning(f"    [{model_name}] ⚠ WARNING: Did not converge within {n_stages} stages "
+                       f"(β={beta:.4f})")
 
     return TMCMCResult(
         samples=samples_list,
