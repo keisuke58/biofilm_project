@@ -1,7 +1,21 @@
 # src/hierarchical.py
+"""
+Hierarchical Bayesian inference for biofilm multi-scale models.
+
+This module implements the three-stage hierarchical parameter estimation:
+- M1: Coarse model (species 1-2, parameters θ[0:5])
+- M2: Medium model (species 3-4, parameters θ[5:10])
+- M3: Fine model (cross-interactions, parameters θ[10:14])
+
+References
+----------
+.. [1] Fritsch et al. (2025), "Hierarchical Bayesian Inference for
+       Multi-Scale Biofilm Formation Models"
+"""
 import time
 import numpy as np
 from dataclasses import dataclass
+from typing import Dict, Optional
 
 from .config import CONFIG, get_theta_true
 from .solver_newton import BiofilmNewtonSolver
@@ -13,6 +27,32 @@ from .progress import ProgressTracker
 
 @dataclass
 class HierarchicalResults:
+    """
+    Results from hierarchical Bayesian calibration.
+
+    Attributes
+    ----------
+    M1_samples : np.ndarray
+        Final posterior samples for M1 parameters (N, 5)
+    M2_samples : np.ndarray
+        Final posterior samples for M2 parameters (N, 5)
+    M3_samples : np.ndarray
+        Final posterior samples for M3 parameters (N, 4)
+    theta_M1_mean : np.ndarray
+        Posterior mean of M1 parameters (5,)
+    theta_M2_mean : np.ndarray
+        Posterior mean of M2 parameters (5,)
+    theta_M3_mean : np.ndarray
+        Posterior mean of M3 parameters (4,)
+    theta_final : np.ndarray
+        Complete parameter vector with all posterior means (14,)
+    tmcmc_M1 : TMCMCResult
+        Complete TMCMC results for M1
+    tmcmc_M2 : TMCMCResult
+        Complete TMCMC results for M2
+    tmcmc_M3 : TMCMCResult
+        Complete TMCMC results for M3
+    """
     M1_samples: np.ndarray
     M2_samples: np.ndarray
     M3_samples: np.ndarray
@@ -35,10 +75,56 @@ except ImportError:
     print("⚠ Numba not available: using pure NumPy (slower)")
 
 
-def hierarchical_case2(config=None) -> HierarchicalResults:
+def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     """
-    Paper-accurate hierarchical updating: M1 → M2 → M3
-    （re_numba.py の hierarchical_case2 をほぼそのまま移植）
+    Hierarchical Bayesian parameter estimation for biofilm models.
+
+    Implements sequential updating through three model scales:
+    1. M1: Estimates θ[0:5] (species 1-2 interaction parameters)
+    2. M2: Estimates θ[5:10] (species 3-4 interaction parameters)
+    3. M3: Estimates θ[10:14] (cross-species interaction parameters)
+
+    Each stage uses the posterior from the previous stage as prior,
+    enabling efficient exploration of the 14-dimensional parameter space.
+
+    Parameters
+    ----------
+    config : dict, optional
+        Configuration dictionary containing:
+        - M1, M2, M3: Model-specific settings (dt, maxtimestep, etc.)
+        - N0: Initial number of TMCMC samples
+        - stages: Number of TMCMC stages
+        - Ndata: Number of sparse data points
+        - sigma_obs: Observation noise standard deviation
+        If None, uses global CONFIG from config.py
+
+    Returns
+    -------
+    HierarchicalResults
+        Complete results including:
+        - Final posterior samples for all three stages
+        - Posterior means for each parameter group
+        - Complete TMCMC diagnostics (convergence, ESS, etc.)
+        - Combined parameter vector theta_final
+
+    Notes
+    -----
+    The hierarchical structure assumes:
+    - M1 calibrates species 1-2 independently
+    - M2 calibrates species 3-4 using M1 posterior mean
+    - M3 calibrates cross-interactions using M1+M2 means
+
+    Prior distributions are U(0,3) for all parameters as per the paper.
+
+    Examples
+    --------
+    >>> from src.config import CONFIG
+    >>> results = hierarchical_case2(CONFIG)
+    >>> print(f"Final RMSE: {np.sqrt(np.mean((results.theta_final - theta_true)**2))}")
+
+    References
+    ----------
+    .. [1] Fritsch et al. (2025), "Hierarchical Bayesian Inference..."
     """
     if config is None:
         config = CONFIG
