@@ -360,8 +360,9 @@ def make_all_case2_figures(
         - theta_final, theta_std など（必要なら追加）
     """
     # Corner plots (Fig. 8, Fig.10, Fig.12)
+    # Extract last stage samples from TMCMC result
     corner_plot(
-        samples=results.tmcmc_M1.samples,
+        samples=results.tmcmc_M1.samples[-1],  # Last stage
         true_values=results.theta_true_M1,
         labels=results.labels_M1,
         model_name="M1",
@@ -369,7 +370,7 @@ def make_all_case2_figures(
         filename="case2_M1_corner.png",
     )
     corner_plot(
-        samples=results.tmcmc_M2.samples,
+        samples=results.tmcmc_M2.samples[-1],  # Last stage
         true_values=results.theta_true_M2,
         labels=results.labels_M2,
         model_name="M2",
@@ -377,7 +378,7 @@ def make_all_case2_figures(
         filename="case2_M2_corner.png",
     )
     corner_plot(
-        samples=results.tmcmc_M3.samples,
+        samples=results.tmcmc_M3.samples[-1],  # Last stage
         true_values=results.theta_true_M3,
         labels=results.labels_M3,
         model_name="M3",
