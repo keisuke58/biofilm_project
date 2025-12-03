@@ -28,7 +28,7 @@ def test_M1_2species():
         alpha_const=100.0
     )
 
-    # Check initial state
+    # Check initial state - ALL species start at same value
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
     assert np.allclose(g0[0:2], 0.2, atol=1e-6), "Species 1-2 should start at 0.2"
@@ -77,7 +77,7 @@ def test_M2_2species():
         alpha_const=10.0
     )
 
-    # Check initial state
+    # Check initial state - ALL species start at same value
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
     assert np.allclose(g0[0:2], 0.2, atol=1e-6), "Species 1-2 should start at 0.2 (constant inactive value)"
@@ -171,9 +171,11 @@ def main():
         print("✅ ALL TESTS PASSED")
         print("="*60)
         print("\nThe implementation correctly uses:")
-        print("  - M1: True 2-species submodel (species 1-2 only)")
-        print("  - M2: True 2-species submodel (species 3-4 only)")
+        print("  - M1: True 2-species submodel (species 1-2 grow, 3-4 stay at init)")
+        print("  - M2: True 2-species submodel (species 3-4 grow, 1-2 stay at init)")
         print("  - M3: Full 4-species model with all interactions")
+        print("\nKey insight: All species start at SAME value (no zeros).")
+        print("2-species behavior comes from parameter masking (active_species).")
         print("\nThis matches the paper's Case II specification! 🎉")
 
     except AssertionError as e:
