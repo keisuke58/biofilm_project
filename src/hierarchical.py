@@ -84,6 +84,10 @@ class HierarchicalResults:
         Complete TMCMC results for M2
     tmcmc_M3 : TMCMCResult
         Complete TMCMC results for M3
+    validation_time : np.ndarray
+        Time vector for the post-Stage-3 validation simulation
+    validation_states : np.ndarray
+        Trajectories from the post-Stage-3 validation simulation (phi/psi/gamma)
     """
     M1_samples: np.ndarray
     M2_samples: np.ndarray
@@ -495,27 +499,34 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     theta_final = theta_stage3_center.copy()
     theta_final[10:14] = theta_M3_mean
 
-    theta_final_map = theta_stage3_center.copy()
-    theta_final_map[10:14] = theta_M3_map
+    # =========================================================================
+    # POST-STAGE-3 VALIDATION (full 4-species model)
+    # =========================================================================
+    print("\n" + "="*72)
+    print("  Post-Stage-3 validation (all species)")
+    print("="*72)
+
+    validation_solver = BiofilmNewtonSolver(
+        dt=1e-4,
+        maxtimestep=1500,
+        phi_init=0.02,
+        c_const=25.0,
+        use_numba=HAS_NUMBA,
+    )
+
+    def alpha_profile(t, dt=validation_solver.dt):
+        step_index = int(np.floor(t / dt))
+        return 0.0 if step_index <= 500 else 50.0
+
+    validation_solver.alpha = alpha_profile
+
+    validation_time, validation_states = validation_solver.run_deterministic(
+        theta_final, show_progress=config.get("verbose", False)
+    )
 
     return HierarchicalResults(
-        M1_samples=samples_M1,
-        M2_samples=samples_M2,
-        M3_samples=samples_M3,
-        data_M1=data_M1,
-        data_M2=data_M2,
-        data_M3=data_M3,
-        t1_sparse=t1_sparse,
-        t2_sparse=t2_sparse,
-        t3_sparse=t3_sparse,
-        idx1=idx1,
-        idx2=idx2,
-        idx3=idx3,
-        theta_M1_mean=theta_M1_mean,
-        theta_M2_mean=theta_M2_mean,
-        theta_M3_mean=theta_M3_mean,
-        theta_final=theta_final,
-        tmcmc_M1=res_M1,
-        tmcmc_M2=res_M2,
-        tmcmc_M3=res_M3,
+        M1_samples=samples_M1, M2_samples=samples_M2, M3_samples=samples_M3,
+        theta_M1_mean=theta_M1_mean, theta_M2_mean=theta_M2_mean, theta_M3_mean=theta_M3_mean,
+        theta_final=theta_final, tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3,
+        validation_time=validation_time, validation_states=validation_states
     )
