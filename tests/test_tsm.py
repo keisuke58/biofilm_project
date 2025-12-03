@@ -5,7 +5,7 @@ Run with: pytest tests/test_tsm.py
 """
 import pytest
 import numpy as np
-from src.tsm import BiofilmTSM
+from src.tsm import BiofilmTSM, log_likelihood_sparse
 from src.solver_newton import BiofilmNewtonSolver
 from src.config import get_theta_true, CONFIG
 
@@ -126,7 +126,6 @@ class TestBiofilmTSM:
         tsm_M3 = BiofilmTSM(solver, active_theta_indices=[10, 11, 12, 13])
         result_M3 = tsm_M3.solve_tsm(theta_true)
         assert result_M3.x1.shape[2] == 4
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
