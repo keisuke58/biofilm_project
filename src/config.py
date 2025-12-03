@@ -2,7 +2,8 @@
 import numpy as np
 
 # DEBUG / プロット
-DEBUG =  True    # Paper-accurate: False
+# Default to paper-accurate (Case II) settings; enable DEBUG for faster test runs.
+DEBUG = False
 ENABLE_PLOTS = True
 
 # ─────────────────────────────────────────────
