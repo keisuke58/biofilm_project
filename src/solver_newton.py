@@ -21,7 +21,25 @@ class BiofilmNewtonSolver:
 
     def __init__(self, dt=1e-5, maxtimestep=2500, eps=1e-6, Kp1=1e-4,
                  eta_vec=None, c_const=100.0, alpha_const=100.0,
-                 phi_init=0.02, use_numba=True):
+                 phi_init=0.02, use_numba=True, active_species=None):
+        """
+        Initialize BiofilmNewtonSolver.
+
+        Parameters
+        ----------
+        phi_init : float or array-like
+            Initial volume fraction for each species.
+            - If scalar: same value for all 4 species
+            - If array [phi1, phi2, phi3, phi4]: individual values per species
+            - Use [0.2, 0.2, 0.0, 0.0] for M1 (species 1-2 only)
+            - Use [0.0, 0.0, 0.2, 0.2] for M2 (species 3-4 only)
+        active_species : list of int, optional
+            Indices of active species (0-3). If provided, inactive species
+            interaction parameters will be zeroed out.
+            - M1: active_species=[0, 1] for species 1-2
+            - M2: active_species=[2, 3] for species 3-4
+            - M3: active_species=None or [0,1,2,3] for all species
+        """
         self.dt = dt
         self.maxtimestep = maxtimestep
         self.eps = eps
@@ -30,7 +48,16 @@ class BiofilmNewtonSolver:
         self.Eta_phi_vec = self.Eta_vec.copy()
         self.c_const = float(c_const)
         self.alpha_const = float(alpha_const)
-        self.phi_init = float(phi_init)
+
+        # Support vector phi_init for 2-species submodels
+        if np.isscalar(phi_init):
+            self.phi_init = np.array([float(phi_init)] * 4)
+        else:
+            self.phi_init = np.asarray(phi_init, dtype=float)
+            if self.phi_init.shape != (4,):
+                raise ValueError(f"phi_init must be scalar or shape (4,), got {self.phi_init.shape}")
+
+        self.active_species = active_species
         self.use_numba = use_numba and HAS_NUMBA
 
     def c(self, t): return self.c_const
@@ -38,6 +65,12 @@ class BiofilmNewtonSolver:
 
     # θ → A, b の変換は re_numba.py の実装をコピペ
     def theta_to_matrices(self, theta):
+        """
+        Convert parameter vector to interaction matrix A and growth vector b.
+
+        If active_species is specified, inactive species parameters are zeroed out.
+        This enables true 2-species submodels (M1: species 1-2, M2: species 3-4).
+        """
         theta = np.asarray(theta, dtype=float)
         a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta
         A = np.array([
@@ -47,11 +80,28 @@ class BiofilmNewtonSolver:
             [a14, a24, a34, a44]
         ], dtype=float)
         b_diag = np.array([b1, b2, b3, b4], dtype=float)
+
+        # Zero out inactive species interactions for 2-species submodels
+        if self.active_species is not None:
+            inactive = [i for i in range(4) if i not in self.active_species]
+            for i in inactive:
+                A[i, :] = 0.0  # Row i: species i interactions
+                A[:, i] = 0.0  # Col i: interactions with species i
+                b_diag[i] = 0.0  # Growth rate of species i
+
         return A, b_diag
 
     # 初期状態
     def get_initial_state(self):
-        phi_vec = np.array([self.phi_init] * 4)
+        """
+        Get initial state vector [phi1, phi2, phi3, phi4, phi0, psi1, psi2, psi3, psi4, gamma].
+
+        For 2-species submodels:
+        - M1: phi_init=[0.2, 0.2, 0.0, 0.0] → only species 1-2 are present
+        - M2: phi_init=[0.0, 0.0, 0.2, 0.2] → only species 3-4 are present
+        - M3: phi_init=[0.02, 0.02, 0.02, 0.02] → all 4 species present
+        """
+        phi_vec = self.phi_init.copy()  # Now a vector
         phi0 = 1.0 - np.sum(phi_vec)
         psi_vec = np.array([0.999] * 4)
         gamma = 1e-6

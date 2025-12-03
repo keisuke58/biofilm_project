@@ -266,26 +266,29 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # =========================================================================
     print("\n[Step 0] Generating synthetic data...")
     np.random.seed(42)
-    
-    # M1 solver with phi_init = 0.2
+
+    # M1 solver: TRUE 2-species submodel (species 1-2 only)
     solver_M1 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M1"],  # 0.2
+        phi_init=config["phi_init_M1"],  # [0.2, 0.2, 0.0, 0.0]
+        active_species=config.get("active_species_M1"),  # [0, 1]
         use_numba=HAS_NUMBA,
         **config["M1"]
     )
     t1, g1 = solver_M1.run_deterministic(theta_true, show_progress=True)
-    
-    # M2 solver with phi_init = 0.2
+
+    # M2 solver: TRUE 2-species submodel (species 3-4 only)
     solver_M2 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M2"],  # 0.2
+        phi_init=config["phi_init_M2"],  # [0.0, 0.0, 0.2, 0.2]
+        active_species=config.get("active_species_M2"),  # [2, 3]
         use_numba=HAS_NUMBA,
         **config["M2"]
     )
     t2, g2 = solver_M2.run_deterministic(theta_true, show_progress=True)
-    
-    # M3 solver with phi_init = 0.02
+
+    # M3 solver: Full 4-species model
     solver_M3 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M3"],  # 0.02
+        phi_init=config["phi_init_M3"],  # 0.02 (scalar, all 4 species)
+        active_species=config.get("active_species_M3"),  # None (all active)
         use_numba=HAS_NUMBA,
         **config["M3"]
     )
@@ -314,13 +317,14 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     print(f"  ✓ Data indices: M1={idx1[:3]}...{idx1[-1]}, M2={idx2[:3]}...{idx2[-1]}")
 
     # =========================================================================
-    # STAGE 1: M1 (species 1 & 2)
+    # STAGE 1: M1 (species 1 & 2) - TRUE 2-SPECIES SUBMODEL
     # =========================================================================
     print("\n" + "="*72)
-    print("  Stage 1: M1 (species 1 & 2)")
+    print("  Stage 1: M1 (TRUE 2-species submodel: species 1-2 only)")
     print(f"  Initial ϕ = {config['phi_init_M1']}, Ndata = {Ndata}")
+    print(f"  Active species: {config.get('active_species_M1', 'all')}")
     print("="*72)
-    
+
     tsm_M1 = BiofilmTSM(solver_M1, cov_rel=config["cov_rel"],
                         active_theta_indices=config["theta_active_indices_M1"])
     
@@ -374,13 +378,14 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     theta_stage2_center[0:5] = theta_M1_map
 
     # =========================================================================
-    # STAGE 2: M2 (species 3 & 4)
+    # STAGE 2: M2 (species 3 & 4) - TRUE 2-SPECIES SUBMODEL
     # =========================================================================
     print("\n" + "="*72)
-    print("  Stage 2: M2 (species 3 & 4)")
+    print("  Stage 2: M2 (TRUE 2-species submodel: species 3-4 only)")
     print(f"  Initial ϕ = {config['phi_init_M2']}, Ndata = {Ndata}")
+    print(f"  Active species: {config.get('active_species_M2', 'all')}")
     print("="*72)
-    
+
     tsm_M2 = BiofilmTSM(solver_M2, cov_rel=config["cov_rel"],
                         active_theta_indices=config["theta_active_indices_M2"])
     
@@ -430,13 +435,14 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     theta_stage3_center[5:10] = theta_M2_map
 
     # =========================================================================
-    # STAGE 3: M3 (cross interactions)
+    # STAGE 3: M3 (cross interactions) - FULL 4-SPECIES MODEL
     # =========================================================================
     print("\n" + "="*72)
-    print("  Stage 3: M3 (cross interactions)")
+    print("  Stage 3: M3 (FULL 4-species model: all cross-interactions)")
     print(f"  Initial ϕ = {config['phi_init_M3']}, Ndata = {Ndata}")
+    print(f"  Active species: {config.get('active_species_M3', 'all')}")
     print("="*72)
-    
+
     tsm_M3 = BiofilmTSM(solver_M3, cov_rel=config["cov_rel"],
                         active_theta_indices=config["theta_active_indices_M3"])
     
