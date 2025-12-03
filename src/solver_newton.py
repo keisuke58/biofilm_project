@@ -27,15 +27,14 @@ class BiofilmNewtonSolver:
 
         Parameters
         ----------
-        phi_init : float or array-like
-            Initial volume fraction for each species.
-            - If scalar: same value for all 4 species
-            - If array [phi1, phi2, phi3, phi4]: individual values per species
-            - Use [0.2, 0.2, 0.0, 0.0] for M1 (species 1-2 only)
-            - Use [0.0, 0.0, 0.2, 0.2] for M2 (species 3-4 only)
+        phi_init : float
+            Scalar initial volume fraction used for all four species.
+            Two-species behavior is enforced via `active_species` masking,
+            not by zeroing initial conditions.
         active_species : list of int, optional
             Indices of active species (0-3). If provided, inactive species
-            interaction parameters will be zeroed out.
+            interaction parameters will be zeroed out and their states held
+            at `phi_init` during the Newton solve.
             - M1: active_species=[0, 1] for species 1-2
             - M2: active_species=[2, 3] for species 3-4
             - M3: active_species=None or [0,1,2,3] for all species
@@ -49,14 +48,10 @@ class BiofilmNewtonSolver:
         self.c_const = float(c_const)
         self.alpha_const = float(alpha_const)
 
-        # Support vector phi_init for 2-species submodels
-        if np.isscalar(phi_init):
-            self.phi_init = np.array([float(phi_init)] * 4)
-        else:
-            self.phi_init = np.asarray(phi_init, dtype=float)
-            if self.phi_init.shape != (4,):
-                raise ValueError(f"phi_init must be scalar or shape (4,), got {self.phi_init.shape}")
-
+        # Use scalar phi_init for all species (parameter masking controls active species)
+        if not np.isscalar(phi_init):
+            raise ValueError("phi_init must be a scalar value")
+        self.phi_init = float(phi_init)
         self.active_species = active_species
         self.use_numba = use_numba and HAS_NUMBA
 
@@ -96,12 +91,10 @@ class BiofilmNewtonSolver:
         """
         Get initial state vector [phi1, phi2, phi3, phi4, phi0, psi1, psi2, psi3, psi4, gamma].
 
-        For 2-species submodels:
-        - M1: phi_init=[0.2, 0.2, 0.0, 0.0] → only species 1-2 are present
-        - M2: phi_init=[0.0, 0.0, 0.2, 0.2] → only species 3-4 are present
-        - M3: phi_init=[0.02, 0.02, 0.02, 0.02] → all 4 species present
+        For 2-species submodels, all species start at the same `phi_init`,
+        and inactive species are kept fixed via masking during iteration.
         """
-        phi_vec = self.phi_init.copy()  # Now a vector
+        phi_vec = np.array([self.phi_init] * 4)
         phi0 = 1.0 - np.sum(phi_vec)
         psi_vec = np.array([0.999] * 4)
         gamma = 1e-6
@@ -240,6 +233,20 @@ class BiofilmNewtonSolver:
                     raise RuntimeError(f"NaN at t={tt}")
                 dg = np.linalg.solve(K, -Q)
                 g_new = g_new + dg
+
+                # Safeguards: prevent phi/psi from approaching zero
+                phi_min = 1e-8
+                psi_min = 1e-8
+                g_new[0:4] = np.maximum(g_new[0:4], phi_min)
+                g_new[4] = np.maximum(g_new[4], phi_min)
+                g_new[5:9] = np.maximum(g_new[5:9], psi_min)
+
+                # Enforce inactive species staying at initial values
+                if self.active_species is not None:
+                    inactive = [i for i in range(4) if i not in self.active_species]
+                    for i in inactive:
+                        g_new[i] = self.phi_init
+                        g_new[i+5] = g_prev[i+5]
                 if np.max(np.abs(Q)) < eps:
                     break
             g_prev = g_new.copy()
