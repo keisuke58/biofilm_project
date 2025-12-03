@@ -28,9 +28,9 @@ def get_config(debug: bool):
     """
     if debug:
         return {
-            "M1": dict(dt=1e-5, maxtimestep=2500, c_const=100.0, alpha_const=100.0),
-            "M2": dict(dt=1e-5, maxtimestep=5000, c_const=100.0, alpha_const=10.0),
-            "M3": dict(dt=1e-4, maxtimestep=750,  c_const=25.0,  alpha_const=0.0),
+            "M1": dict(dt=1e-5, maxtimestep=25, c_const=100.0, alpha_const=100.0),
+            "M2": dict(dt=1e-5, maxtimestep=50, c_const=100.0, alpha_const=10.0),
+            "M3": dict(dt=1e-4, maxtimestep=75,  c_const=25.0,  alpha_const=0.0),
             # initial φ (SCALAR: all species start at same value)
             # 2-species behavior comes from active_species masking
             "phi_init_M1": 0.2,   # All species start at 0.2
