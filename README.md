@@ -3,6 +3,9 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%20|%203.10%20|%203.11%20|%203.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Documentation Status](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://keisuke58.github.io/biofilm_project/)
+[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-blue.svg)](https://keisuke58.github.io/biofilm_project/)
+[![Read the Docs](https://img.shields.io/badge/docs-Read%20the%20Docs-blue.svg)](https://biofilm-project.readthedocs.io/)
 
 Hierarchical Bayesian parameter estimation for multi-scale biofilm formation models using Time-Separated Mechanics (TSM) and Transitional Markov Chain Monte Carlo (TMCMC).
 
@@ -197,9 +200,14 @@ jupyter lab examples/
 
 ## 📚 Documentation
 
-Comprehensive documentation is available in the `docs/` directory.
+Comprehensive documentation is available in multiple formats:
 
-### Building Documentation
+- **📖 Online (GitHub Pages):** [keisuke58.github.io/biofilm_project](https://keisuke58.github.io/biofilm_project/)
+- **📚 Read the Docs:** [biofilm-project.readthedocs.io](https://biofilm-project.readthedocs.io/)
+- **📄 PDF:** Available on [Read the Docs](https://biofilm-project.readthedocs.io/_/downloads/en/latest/pdf/) or [GitHub Releases](https://github.com/keisuke58/biofilm_project/releases)
+- **💻 Local:** Build from source (see below)
+
+### Building Documentation Locally
 
 ```bash
 # Install documentation dependencies
@@ -213,6 +221,9 @@ make html
 open build/html/index.html  # macOS
 # or: xdg-open build/html/index.html  # Linux
 # or: start build/html/index.html     # Windows
+
+# Build PDF (requires LaTeX)
+make latexpdf
 ```
 
 ### Documentation Contents
@@ -221,6 +232,7 @@ open build/html/index.html  # macOS
 * **API Reference**: Detailed API documentation for all modules
 * **Scientific Background**: Mathematical formulation and algorithms
 * **Development**: Testing, contributing guidelines, and changelog
+* **Deployment**: GitHub Pages and Read the Docs setup
 
 The documentation includes:
 - Step-by-step tutorials
@@ -228,6 +240,15 @@ The documentation includes:
 - Scientific background and mathematical formulation
 - API reference with examples
 - Testing and development guidelines
+
+### Automated Deployment
+
+Documentation is automatically built and deployed:
+- **GitHub Pages**: On every push to main
+- **Read the Docs**: On every commit (HTML, PDF, ePub)
+- **PDF Reports**: Generated via GitHub Actions
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment configuration.
 
 ## 🧪 Scientific Background
 
