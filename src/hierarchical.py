@@ -32,63 +32,29 @@ class HierarchicalResults:
 
     Attributes
     ----------
-    M1_samples : np.ndarray
-        Final posterior samples for M1 parameters (N, 5)
-    M2_samples : np.ndarray
-        Final posterior samples for M2 parameters (N, 5)
-    M3_samples : np.ndarray
-        Final posterior samples for M3 parameters (N, 4)
-    data_M1 : np.ndarray
-        Sparse observational data used in M1 calibration (Ndata, 2)
-    data_M2 : np.ndarray
-        Sparse observational data used in M2 calibration (Ndata, 2)
-    data_M3 : np.ndarray
-        Sparse observational data used in M3 calibration (Ndata, 4)
-    t1_sparse : np.ndarray
-        Time points corresponding to data_M1 indices
-    t2_sparse : np.ndarray
-        Time points corresponding to data_M2 indices
-    t3_sparse : np.ndarray
-        Time points corresponding to data_M3 indices
-    idx1 : np.ndarray
-        Indices of selected sparse observations for M1
-    idx2 : np.ndarray
-        Indices of selected sparse observations for M2
-    idx3 : np.ndarray
-        Indices of selected sparse observations for M3
-    theta_M1_mean : np.ndarray
-        Posterior mean of M1 parameters (5,)
-    theta_M2_mean : np.ndarray
-        Posterior mean of M2 parameters (5,)
-    theta_M3_mean : np.ndarray
-        Posterior mean of M3 parameters (4,)
-    theta_M1_map : np.ndarray
-        Maximum a posteriori estimate of M1 parameters (5,)
-    theta_M2_map : np.ndarray
-        Maximum a posteriori estimate of M2 parameters (5,)
-    theta_M3_map : np.ndarray
-        Maximum a posteriori estimate of M3 parameters (4,)
+    M1_samples, M2_samples, M3_samples : np.ndarray
+        Posterior samples for each calibration stage.
+    data_M1, data_M2, data_M3 : np.ndarray
+        Sparse observational datasets used in each stage.
+    t1_sparse, t2_sparse, t3_sparse : np.ndarray
+        Time points corresponding to the sparse observations.
+    idx1, idx2, idx3 : np.ndarray
+        Indices of the sparse observation points within the full trajectories.
+    theta_M1_mean, theta_M2_mean, theta_M3_mean : np.ndarray
+        Posterior means for each parameter block.
+    theta_M1_map, theta_M2_map, theta_M3_map : np.ndarray
+        Maximum a posteriori estimates for each parameter block.
     theta_final : np.ndarray
-        Complete parameter vector with all posterior means (14,)
+        Concatenated parameter vector using posterior means.
     theta_final_map : np.ndarray
-        Complete parameter vector assembled from MAP estimates (14,)
-    data_M1 : np.ndarray
-        Observational data used for M1 stage
-    data_M2 : np.ndarray
-        Observational data used for M2 stage
-    data_M3 : np.ndarray
-        Observational data used for M3 stage
-    tmcmc_M1 : TMCMCResult
-        Complete TMCMC results for M1
-    tmcmc_M2 : TMCMCResult
-        Complete TMCMC results for M2
-    tmcmc_M3 : TMCMCResult
-        Complete TMCMC results for M3
-    validation_time : np.ndarray
-        Time vector for the post-Stage-3 validation simulation
-    validation_states : np.ndarray
-        Trajectories from the post-Stage-3 validation simulation (phi/psi/gamma)
+        Concatenated parameter vector assembled from MAP estimates.
+    tmcmc_M1, tmcmc_M2, tmcmc_M3 : TMCMCResult
+        Complete TMCMC diagnostics for each stage.
+    validation_time, validation_states : np.ndarray
+        Time vector and state trajectories from the post-calibration validation run.
     """
+
+    # Required (non-default) fields
     M1_samples: np.ndarray
     M2_samples: np.ndarray
     M3_samples: np.ndarray
@@ -105,16 +71,17 @@ class HierarchicalResults:
     theta_M2_mean: np.ndarray
     theta_M3_mean: np.ndarray
     theta_final: np.ndarray
+
+    # Optional fields must follow the required fields
     theta_M1_map: Optional[np.ndarray] = field(default=None)
     theta_M2_map: Optional[np.ndarray] = field(default=None)
     theta_M3_map: Optional[np.ndarray] = field(default=None)
     theta_final_map: Optional[np.ndarray] = field(default=None)
-    data_M1: Optional[np.ndarray] = field(default=None)
-    data_M2: Optional[np.ndarray] = field(default=None)
-    data_M3: Optional[np.ndarray] = field(default=None)
     tmcmc_M1: Optional[TMCMCResult] = field(default=None)
     tmcmc_M2: Optional[TMCMCResult] = field(default=None)
     tmcmc_M3: Optional[TMCMCResult] = field(default=None)
+    validation_time: Optional[np.ndarray] = field(default=None)
+    validation_states: Optional[np.ndarray] = field(default=None)
 
     # =============================================================================
 # NUMBA ACCELERATION
@@ -499,6 +466,9 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     theta_final = theta_stage3_center.copy()
     theta_final[10:14] = theta_M3_mean
 
+    theta_final_map = theta_stage3_center.copy()
+    theta_final_map[10:14] = theta_M3_map
+
     # =========================================================================
     # POST-STAGE-3 VALIDATION (full 4-species model)
     # =========================================================================
@@ -521,12 +491,17 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     validation_solver.alpha = alpha_profile
 
     validation_time, validation_states = validation_solver.run_deterministic(
-        theta_final, show_progress=config.get("verbose", False)
+        theta_final_map, show_progress=config.get("verbose", False)
     )
 
     return HierarchicalResults(
         M1_samples=samples_M1, M2_samples=samples_M2, M3_samples=samples_M3,
+        data_M1=data_M1, data_M2=data_M2, data_M3=data_M3,
+        t1_sparse=t1_sparse, t2_sparse=t2_sparse, t3_sparse=t3_sparse,
+        idx1=idx1, idx2=idx2, idx3=idx3,
         theta_M1_mean=theta_M1_mean, theta_M2_mean=theta_M2_mean, theta_M3_mean=theta_M3_mean,
-        theta_final=theta_final, tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3,
+        theta_final=theta_final, theta_M1_map=theta_M1_map, theta_M2_map=theta_M2_map,
+        theta_M3_map=theta_M3_map, theta_final_map=theta_final_map,
+        tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3,
         validation_time=validation_time, validation_states=validation_states
     )

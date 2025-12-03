@@ -2,7 +2,7 @@
 import numpy as np
 
 # DEBUG / プロット
-DEBUG =  True    # Paper-accurate: False
+DEBUG =  False    # Paper-accurate: False
 ENABLE_PLOTS = True
 
 # ─────────────────────────────────────────────
