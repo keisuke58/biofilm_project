@@ -34,8 +34,8 @@ def get_config(debug: bool):
             "Ndata": 20,
             # TMCMC
             "N0": 10,
-            "Nposterior": 50,
-            "stages": 10,
+            "Nposterior": 10,
+            "stages": 3,
             "target_ess_ratio": 0.8,
             # TSM
             "theta_active_indices_M1": [0, 1, 2, 3, 4],
