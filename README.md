@@ -250,6 +250,50 @@ Documentation is automatically built and deployed:
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deployment configuration.
 
+## 🤖 Automated Analysis Pipeline
+
+**NEW:** Complete computational pipeline runs automatically on GitHub Actions!
+
+### Automated Analyses
+
+The project includes comprehensive GitHub Actions workflows that automatically execute:
+
+- ✅ **TMCMC Calibration** - Full hierarchical Bayesian calibration
+- ✅ **TSM Sensitivity Analysis** - Parameter sensitivity computation
+- ✅ **Forward Simulation** - Predictive simulations
+- ✅ **Predictive Uncertainty** - UQ with posterior samples
+- ✅ **Report Generation** - PDF reports with all results
+- ✅ **Notebook Conversion** - Convert to HTML/PDF
+- ✅ **Performance Profiling** - Speed and memory analysis
+- ✅ **Benchmarking** - Performance tracking
+
+### Triggers
+
+- **Automatic:** On push to main, pull requests, weekly schedule
+- **Manual:** Via GitHub Actions UI or CLI
+
+### Quick Start
+
+```bash
+# Via GitHub UI:
+Actions → "Complete Automated Analysis Pipeline" → Run workflow
+
+# Via GitHub CLI:
+gh workflow run automated-analysis.yml -f run_mode=debug
+```
+
+### Results
+
+All results are automatically uploaded as artifacts:
+- Calibration outputs (.npz, .npy)
+- Sensitivity plots and data
+- Forward simulations & UQ
+- Performance metrics
+- Converted notebooks (HTML/PDF)
+- Complete PDF reports
+
+See [docs/AUTOMATION.md](docs/AUTOMATION.md) for complete automation guide.
+
 ## 🧪 Scientific Background
 
 ### Physical Model

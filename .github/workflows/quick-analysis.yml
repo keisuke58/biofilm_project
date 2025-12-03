@@ -1,0 +1,76 @@
+name: Quick Analysis (DEBUG Mode)
+
+on:
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Type of analysis to run'
+        required: true
+        default: 'calibration'
+        type: choice
+        options:
+          - calibration
+          - sensitivity
+          - simulation
+          - profiling
+          - all
+
+jobs:
+  quick-analysis:
+    name: Quick ${{ inputs.analysis_type }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Calibration
+        if: inputs.analysis_type == 'calibration' || inputs.analysis_type == 'all'
+        run: |
+          echo "Running quick calibration..."
+          python main_calibration.py
+        env:
+          DEBUG: 'true'
+
+      - name: Run Sensitivity Analysis
+        if: inputs.analysis_type == 'sensitivity' || inputs.analysis_type == 'all'
+        run: |
+          echo "Running TSM sensitivity..."
+          python -c "
+          from src.config import CONFIG, get_theta_true
+          from src.tsm import compute_tsm_sensitivity
+          import numpy as np
+          theta = get_theta_true()
+          S = compute_tsm_sensitivity(theta, CONFIG['M1'])
+          np.save('results/quick_sensitivity.npy', S)
+          print(f'Sensitivity shape: {S.shape}')
+          "
+
+      - name: Run Forward Simulation
+        if: inputs.analysis_type == 'simulation' || inputs.analysis_type == 'all'
+        run: |
+          echo "Running forward simulation..."
+          python main_simulation.py
+
+      - name: Run Profiling
+        if: inputs.analysis_type == 'profiling' || inputs.analysis_type == 'all'
+        run: |
+          echo "Running profiling..."
+          python tools/profile_performance.py --component solver
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-analysis-${{ inputs.analysis_type }}
+          path: results/
+          retention-days: 7
