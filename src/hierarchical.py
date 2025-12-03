@@ -69,9 +69,9 @@ class HierarchicalResults:
     theta_M3_map : np.ndarray
         Maximum a posteriori estimate of M3 parameters (4,)
     theta_final : np.ndarray
-        Complete parameter vector with all posterior means (14,)
-    theta_final_map : np.ndarray
         Complete parameter vector assembled from MAP estimates (14,)
+    theta_final_map : np.ndarray
+        Alias for the final MAP parameter vector (14,)
     data_M1 : np.ndarray
         Observational data used for M1 stage
     data_M2 : np.ndarray
@@ -109,9 +109,6 @@ class HierarchicalResults:
     theta_M2_map: Optional[np.ndarray] = field(default=None)
     theta_M3_map: Optional[np.ndarray] = field(default=None)
     theta_final_map: Optional[np.ndarray] = field(default=None)
-    data_M1: Optional[np.ndarray] = field(default=None)
-    data_M2: Optional[np.ndarray] = field(default=None)
-    data_M3: Optional[np.ndarray] = field(default=None)
     tmcmc_M1: Optional[TMCMCResult] = field(default=None)
     tmcmc_M2: Optional[TMCMCResult] = field(default=None)
     tmcmc_M3: Optional[TMCMCResult] = field(default=None)
@@ -497,7 +494,8 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     print(f"  M3 time: {t3_time:.1f}s, converged: {res_M3.converged}")
 
     theta_final = theta_stage3_center.copy()
-    theta_final[10:14] = theta_M3_mean
+    theta_final[10:14] = theta_M3_map
+    theta_final_map = theta_final.copy()
 
     # =========================================================================
     # POST-STAGE-3 VALIDATION (full 4-species model)
@@ -521,12 +519,13 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     validation_solver.alpha = alpha_profile
 
     validation_time, validation_states = validation_solver.run_deterministic(
-        theta_final, show_progress=config.get("verbose", False)
+        theta_final_map, show_progress=config.get("verbose", False)
     )
 
     return HierarchicalResults(
         M1_samples=samples_M1, M2_samples=samples_M2, M3_samples=samples_M3,
         theta_M1_mean=theta_M1_mean, theta_M2_mean=theta_M2_mean, theta_M3_mean=theta_M3_mean,
-        theta_final=theta_final, tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3,
+        theta_final=theta_final, theta_final_map=theta_final_map,
+        tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3,
         validation_time=validation_time, validation_states=validation_states
     )
