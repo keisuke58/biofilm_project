@@ -45,6 +45,25 @@ class HierarchicalResults:
     theta_M1_map, theta_M2_map, theta_M3_map : np.ndarray
         Maximum a posteriori estimates for each parameter block.
     theta_final : np.ndarray
+        Complete parameter vector assembled from MAP estimates (14,)
+    theta_final_map : np.ndarray
+        Alias for the final MAP parameter vector (14,)
+    data_M1 : np.ndarray
+        Observational data used for M1 stage
+    data_M2 : np.ndarray
+        Observational data used for M2 stage
+    data_M3 : np.ndarray
+        Observational data used for M3 stage
+    tmcmc_M1 : TMCMCResult
+        Complete TMCMC results for M1
+    tmcmc_M2 : TMCMCResult
+        Complete TMCMC results for M2
+    tmcmc_M3 : TMCMCResult
+        Complete TMCMC results for M3
+    validation_time : np.ndarray
+        Time vector for the post-Stage-3 validation simulation
+    validation_states : np.ndarray
+        Trajectories from the post-Stage-3 validation simulation (phi/psi/gamma)
         Concatenated parameter vector using posterior means.
     theta_final_map : np.ndarray
         Concatenated parameter vector assembled from MAP estimates.
@@ -464,7 +483,8 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     print(f"  M3 time: {t3_time:.1f}s, converged: {res_M3.converged}")
 
     theta_final = theta_stage3_center.copy()
-    theta_final[10:14] = theta_M3_mean
+    theta_final[10:14] = theta_M3_map
+    theta_final_map = theta_final.copy()
 
     theta_final_map = theta_stage3_center.copy()
     theta_final_map[10:14] = theta_M3_map

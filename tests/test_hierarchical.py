@@ -88,13 +88,14 @@ class TestHierarchicalCase2:
         assert results.theta_final.shape == (14,)
 
     def test_hierarchical_theta_assembly(self, debug_config):
-        """Test that theta_final is correctly assembled from M1+M2+M3"""
+        """Test that theta_final is correctly assembled from MAP estimates"""
         results = hierarchical_case2(debug_config)
 
-        # Check that theta_final contains M1, M2, M3 means in correct order
-        np.testing.assert_allclose(results.theta_final[0:5], results.theta_M1_mean)
-        np.testing.assert_allclose(results.theta_final[5:10], results.theta_M2_mean)
-        np.testing.assert_allclose(results.theta_final[10:14], results.theta_M3_mean)
+        # Check that theta_final contains M1, M2, M3 MAP estimates in correct order
+        np.testing.assert_allclose(results.theta_final[0:5], results.theta_M1_map)
+        np.testing.assert_allclose(results.theta_final[5:10], results.theta_M2_map)
+        np.testing.assert_allclose(results.theta_final[10:14], results.theta_M3_map)
+        np.testing.assert_allclose(results.theta_final, results.theta_final_map)
 
     def test_hierarchical_convergence_flags(self, debug_config):
         """Test that convergence flags are boolean"""
