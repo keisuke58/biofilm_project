@@ -46,6 +46,7 @@ jobs:
         if: inputs.analysis_type == 'sensitivity' || inputs.analysis_type == 'all'
         run: |
           echo "Running TSM sensitivity..."
+          mkdir -p results
           python -c "
           from src.config import CONFIG, get_theta_true
           from src.tsm import compute_tsm_sensitivity
