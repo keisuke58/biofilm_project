@@ -157,10 +157,49 @@ biofilm_project/
 ├── main_calibration.py           # Basic calibration script
 ├── main_calibration_report.py    # Full report generation
 ├── main_simulation.py            # Forward simulation
+├── docs/                         # Sphinx documentation
+│   ├── source/                   # Documentation source files
+│   ├── build/                    # Generated documentation
+│   └── Makefile                  # Documentation build script
 ├── requirements.txt              # Production dependencies
 ├── requirements-dev.txt          # Development dependencies
+├── requirements-docs.txt         # Documentation dependencies
 └── README.md                     # This file
 ```
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` directory.
+
+### Building Documentation
+
+```bash
+# Install documentation dependencies
+pip install -r requirements-docs.txt
+
+# Build HTML documentation
+cd docs
+make html
+
+# Open the documentation
+open build/html/index.html  # macOS
+# or: xdg-open build/html/index.html  # Linux
+# or: start build/html/index.html     # Windows
+```
+
+### Documentation Contents
+
+* **User Guide**: Installation, quick start, configuration, and tutorials
+* **API Reference**: Detailed API documentation for all modules
+* **Scientific Background**: Mathematical formulation and algorithms
+* **Development**: Testing, contributing guidelines, and changelog
+
+The documentation includes:
+- Step-by-step tutorials
+- Configuration options
+- Scientific background and mathematical formulation
+- API reference with examples
+- Testing and development guidelines
 
 ## 🧪 Scientific Background
 
