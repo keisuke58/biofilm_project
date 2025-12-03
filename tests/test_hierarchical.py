@@ -6,7 +6,21 @@ Run with: pytest tests/test_hierarchical.py -v
 import copy
 import pytest
 import numpy as np
-from src.hierarchical import hierarchical_case2, HierarchicalResults
+from src.hierarchical import (
+    hierarchical_case2,
+    HierarchicalResults,
+    _normalize_phi_init,
+)
+
+
+def test_normalize_phi_init_scalar_to_active_subset():
+    vec = _normalize_phi_init(0.2, 2, [0, 1])
+    np.testing.assert_allclose(vec, [0.2, 0.2])
+
+
+def test_normalize_phi_init_short_vector_pad_and_slice():
+    vec = _normalize_phi_init([0.1], 2, [1])
+    np.testing.assert_allclose(vec, [0.0])
 from src.config import get_theta_true, CONFIG
 
 
