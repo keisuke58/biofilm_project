@@ -39,7 +39,7 @@ jobs:
   tmcmc-calibration:
     name: "1️⃣ TMCMC Calibration"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     outputs:
       run_mode: ${{ steps.setup.outputs.run_mode }}
 
@@ -88,7 +88,7 @@ jobs:
     name: "2️⃣ TSM Sensitivity Analysis"
     runs-on: ubuntu-latest
     needs: tmcmc-calibration
-    timeout-minutes: 20
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -118,9 +118,8 @@ jobs:
           sys.path.insert(0, '.')
           import numpy as np
           from src.config import CONFIG, get_theta_true
-          from src.tsm import compute_tsm_sensitivity
+          from src.tsm import BiofilmTSM
           from src.solver_newton import BiofilmNewtonSolver
-          import matplotlib.pyplot as plt
 
           # Compute sensitivities for all models
           for model in ['M1', 'M2', 'M3']:
@@ -129,11 +128,21 @@ jobs:
               config = CONFIG[model]
 
               try:
-                  S = compute_tsm_sensitivity(theta, config)
-                  np.save(f'results/sensitivity_{model}.npy', S)
-                  print(f'✓ {model} sensitivity computed: {S.shape}')
+                  # Create solver
+                  phi_init = config.get('phi_init', [0.02, 0.02, 0.02, 0.02])
+                  solver = BiofilmNewtonSolver(phi_init, **config)
+
+                  # Run TSM sensitivity analysis
+                  tsm = BiofilmTSM(solver, cov_rel=0.005)
+                  result = tsm.solve_tsm(theta)
+
+                  # Save sensitivity results (sigma2 contains the variance propagation)
+                  np.save(f'results/sensitivity_{model}.npy', result.sigma2)
+                  print(f'✓ {model} sensitivity computed: shape={result.sigma2.shape}')
               except Exception as e:
+                  import traceback
                   print(f'✗ {model} failed: {e}')
+                  traceback.print_exc()
 
           print('TSM sensitivity analysis complete!')
           "
@@ -183,7 +192,7 @@ jobs:
     name: "3️⃣ Forward Simulation & UQ"
     runs-on: ubuntu-latest
     needs: tmcmc-calibration
-    timeout-minutes: 25
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -283,7 +292,7 @@ jobs:
   profiling-benchmark:
     name: "4️⃣ Profiling & Benchmarking"
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -331,7 +340,7 @@ jobs:
     name: "5️⃣ Notebook Conversion"
     runs-on: ubuntu-latest
     if: ${{ !inputs.skip_notebooks }}
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -393,7 +402,7 @@ jobs:
     name: "6️⃣ Complete Report Generation"
     runs-on: ubuntu-latest
     needs: [tmcmc-calibration, tsm-sensitivity, forward-simulation, profiling-benchmark]
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
