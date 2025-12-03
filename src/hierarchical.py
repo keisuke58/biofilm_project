@@ -113,6 +113,28 @@ except ImportError:
     print("⚠ Numba not available: using pure NumPy (slower)")
 
 
+def _normalize_phi_init(phi_init_cfg, species_count: int, active_indices=None):
+    """Return a species_count-length φ₀ vector, handling scalar inputs gracefully."""
+
+    active = list(active_indices) if active_indices is not None else None
+
+    arr = np.asarray(phi_init_cfg, dtype=float)
+    if arr.ndim == 0:  # scalar -> broadcast to the active subset (or species_count)
+        target_len = len(active) if active is not None else species_count
+        arr = np.full(target_len, float(arr))
+
+    if active is not None:
+        max_idx = max(active)
+        if arr.size <= max_idx:
+            arr = np.pad(arr, (0, max_idx + 1 - arr.size))
+        arr = np.array([arr[i] for i in active])
+        return arr
+
+    if arr.size < species_count:
+        arr = np.pad(arr, (0, species_count - arr.size))
+    return arr[:species_count]
+
+
 def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     """
     Hierarchical Bayesian parameter estimation for biofilm models.
@@ -269,7 +291,9 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
 
     # M1 solver: TRUE 2-species submodel (species 1-2 only)
     solver_M1 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M1"][:2],
+        phi_init=_normalize_phi_init(
+            config["phi_init_M1"], 2, config.get("active_species_M1", [0, 1])
+        ),
         species_count=2,
         theta_indices=[0, 1, 2, 3, 4],
         use_numba=False,
@@ -279,7 +303,9 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
 
     # M2 solver: TRUE 2-species submodel (species 3-4 only)
     solver_M2 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M2"][2:],
+        phi_init=_normalize_phi_init(
+            config["phi_init_M2"], 2, config.get("active_species_M2", [2, 3])
+        ),
         species_count=2,
         theta_indices=[5, 6, 7, 8, 9],
         use_numba=False,
