@@ -14,12 +14,19 @@ on:
           - simulation
           - profiling
           - all
+      debug_mode:
+        description: 'Run in DEBUG mode (fast)'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   quick-analysis:
     name: Quick ${{ inputs.analysis_type }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DEBUG: ${{ inputs.debug_mode }}
 
     steps:
       - name: Checkout
@@ -42,8 +49,6 @@ jobs:
         run: |
           echo "Running quick calibration..."
           python main_calibration.py
-        env:
-          DEBUG: 'true'
 
       - name: Run Sensitivity Analysis
         if: inputs.analysis_type == 'sensitivity' || inputs.analysis_type == 'all'

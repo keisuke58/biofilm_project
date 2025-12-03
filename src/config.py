@@ -1,9 +1,10 @@
 # src/config.py
+import os
 import numpy as np
 
 # DEBUG / プロット
-# Default to paper-accurate (Case II) settings; enable DEBUG for faster test runs.
-DEBUG =  True    # Paper-accurate: False
+# Allow overriding via environment variable (DEBUG=true/false)
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ENABLE_PLOTS = True
 
 # ─────────────────────────────────────────────
