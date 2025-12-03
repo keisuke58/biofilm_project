@@ -324,9 +324,17 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
     active_idx = (list(range(len(theta))) if active_theta_indices is None
                   else list(active_theta_indices))
 
-    # Build full 14-dimensional theta vector
+    # Build full 14-dimensional theta vector (tolerate both active-subset and
+    # full-length theta inputs)
     theta_full = np.zeros(14, dtype=float)
-    theta_full[active_idx] = theta
+    if theta.size == theta_full.size:
+        theta_full[:] = theta
+    elif theta.size == len(active_idx):
+        theta_full[active_idx] = theta
+    else:
+        raise ValueError(
+            f"theta length {theta.size} incompatible with active indices of length {len(active_idx)}"
+        )
 
     # Instantiate solver with sensible defaults pulled from config
     solver = BiofilmNewtonSolver(
