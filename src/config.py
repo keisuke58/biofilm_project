@@ -23,9 +23,9 @@ def get_config(debug: bool):
     """
     if debug:
         return {
-            "M1": dict(dt=1e-4, maxtimestep=80,  c_const=100.0, alpha_const=100.0),
-            "M2": dict(dt=1e-4, maxtimestep=100, c_const=100.0, alpha_const=10.0),
-            "M3": dict(dt=1e-4, maxtimestep=60,  c_const=25.0,  alpha_const=0.0),
+            "M1": dict(dt=1e-5, maxtimestep=2500, c_const=100.0, alpha_const=100.0),
+            "M2": dict(dt=1e-5, maxtimestep=5000, c_const=100.0, alpha_const=10.0),
+            "M3": dict(dt=1e-4, maxtimestep=750,  c_const=25.0,  alpha_const=0.0),
             # initial φ
             "phi_init_M1": 0.2,
             "phi_init_M2": 0.2,
