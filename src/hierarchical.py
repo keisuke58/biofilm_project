@@ -14,7 +14,7 @@ References
 """
 import time
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from .config import CONFIG, get_theta_true
@@ -62,8 +62,22 @@ class HierarchicalResults:
         Posterior mean of M2 parameters (5,)
     theta_M3_mean : np.ndarray
         Posterior mean of M3 parameters (4,)
+    theta_M1_map : np.ndarray
+        Maximum a posteriori estimate of M1 parameters (5,)
+    theta_M2_map : np.ndarray
+        Maximum a posteriori estimate of M2 parameters (5,)
+    theta_M3_map : np.ndarray
+        Maximum a posteriori estimate of M3 parameters (4,)
     theta_final : np.ndarray
         Complete parameter vector with all posterior means (14,)
+    theta_final_map : np.ndarray
+        Complete parameter vector assembled from MAP estimates (14,)
+    data_M1 : np.ndarray
+        Observational data used for M1 stage
+    data_M2 : np.ndarray
+        Observational data used for M2 stage
+    data_M3 : np.ndarray
+        Observational data used for M3 stage
     tmcmc_M1 : TMCMCResult
         Complete TMCMC results for M1
     tmcmc_M2 : TMCMCResult
@@ -87,9 +101,16 @@ class HierarchicalResults:
     theta_M2_mean: np.ndarray
     theta_M3_mean: np.ndarray
     theta_final: np.ndarray
-    tmcmc_M1: TMCMCResult
-    tmcmc_M2: TMCMCResult
-    tmcmc_M3: TMCMCResult
+    theta_M1_map: Optional[np.ndarray] = field(default=None)
+    theta_M2_map: Optional[np.ndarray] = field(default=None)
+    theta_M3_map: Optional[np.ndarray] = field(default=None)
+    theta_final_map: Optional[np.ndarray] = field(default=None)
+    data_M1: Optional[np.ndarray] = field(default=None)
+    data_M2: Optional[np.ndarray] = field(default=None)
+    data_M3: Optional[np.ndarray] = field(default=None)
+    tmcmc_M1: Optional[TMCMCResult] = field(default=None)
+    tmcmc_M2: Optional[TMCMCResult] = field(default=None)
+    tmcmc_M3: Optional[TMCMCResult] = field(default=None)
 
     # =============================================================================
 # NUMBA ACCELERATION
@@ -239,6 +260,17 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
                 return -np.inf
         return 0.0
 
+    def find_map_sample(samples: np.ndarray, log_prior_fn, log_like_fn):
+        """Return the highest posterior density sample (MAP approximation)."""
+        log_post = np.array([
+            log_prior_fn(theta) + log_like_fn(theta) for theta in samples
+        ])
+
+        if not np.isfinite(log_post).any():
+            return samples[0]
+
+        return samples[np.nanargmax(log_post)]
+
     # =========================================================================
     # GENERATE SYNTHETIC DATA
     # =========================================================================
@@ -342,12 +374,14 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     
     samples_M1 = res_M1.samples[-1]
     theta_M1_mean = np.mean(samples_M1, axis=0)
+    theta_M1_map = find_map_sample(samples_M1, log_prior_M1, logL_M1)
     print(f"  M1 posterior mean: {theta_M1_mean}")
+    print(f"  M1 MAP sample:     {theta_M1_map}")
     print(f"  M1 true values:    {theta_true[0:5]}")
     print(f"  M1 time: {t1_time:.1f}s, converged: {res_M1.converged}")
 
     theta_stage2_center = theta_prior_center.copy()
-    theta_stage2_center[0:5] = theta_M1_mean
+    theta_stage2_center[0:5] = theta_M1_map
 
     # =========================================================================
     # STAGE 2: M2 (species 3 & 4)
@@ -396,12 +430,14 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     
     samples_M2 = res_M2.samples[-1]
     theta_M2_mean = np.mean(samples_M2, axis=0)
+    theta_M2_map = find_map_sample(samples_M2, log_prior_M2, logL_M2)
     print(f"  M2 posterior mean: {theta_M2_mean}")
+    print(f"  M2 MAP sample:     {theta_M2_map}")
     print(f"  M2 true values:    {theta_true[5:10]}")
     print(f"  M2 time: {t2_time:.1f}s, converged: {res_M2.converged}")
 
     theta_stage3_center = theta_stage2_center.copy()
-    theta_stage3_center[5:10] = theta_M2_mean
+    theta_stage3_center[5:10] = theta_M2_map
 
     # =========================================================================
     # STAGE 3: M3 (cross interactions)
@@ -450,12 +486,17 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     
     samples_M3 = res_M3.samples[-1]
     theta_M3_mean = np.mean(samples_M3, axis=0)
+    theta_M3_map = find_map_sample(samples_M3, log_prior_M3, logL_M3)
     print(f"  M3 posterior mean: {theta_M3_mean}")
+    print(f"  M3 MAP sample:     {theta_M3_map}")
     print(f"  M3 true values:    {theta_true[10:14]}")
     print(f"  M3 time: {t3_time:.1f}s, converged: {res_M3.converged}")
 
     theta_final = theta_stage3_center.copy()
     theta_final[10:14] = theta_M3_mean
+
+    theta_final_map = theta_stage3_center.copy()
+    theta_final_map[10:14] = theta_M3_map
 
     return HierarchicalResults(
         M1_samples=samples_M1,

@@ -51,6 +51,10 @@ class TestHierarchicalCase2:
         assert hasattr(results, "theta_M1_mean")
         assert hasattr(results, "theta_M2_mean")
         assert hasattr(results, "theta_M3_mean")
+        assert hasattr(results, "theta_M1_map")
+        assert hasattr(results, "theta_M2_map")
+        assert hasattr(results, "theta_M3_map")
+        assert hasattr(results, "theta_final_map")
         assert hasattr(results, "tmcmc_M1")
         assert hasattr(results, "tmcmc_M2")
         assert hasattr(results, "tmcmc_M3")
@@ -178,6 +182,10 @@ class TestHierarchicalResultsDataclass:
             theta_M1_mean=theta_final[0:5],
             theta_M2_mean=theta_final[5:10],
             theta_M3_mean=theta_final[10:14],
+            theta_M1_map=theta_final[0:5],
+            theta_M2_map=theta_final[5:10],
+            theta_M3_map=theta_final[10:14],
+            theta_final_map=theta_final,
             tmcmc_M1=None,
             tmcmc_M2=None,
             tmcmc_M3=None,
