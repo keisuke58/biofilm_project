@@ -21,7 +21,8 @@ class BiofilmNewtonSolver:
 
     def __init__(self, dt=1e-5, maxtimestep=2500, eps=1e-6, Kp1=1e-4,
                  eta_vec=None, c_const=100.0, alpha_const=100.0,
-                 phi_init=0.02, use_numba=True, active_species=None):
+                 phi_init=0.02, use_numba=True, active_species=None,
+                 species_count=None):
         """
         Initialize BiofilmNewtonSolver.
 
@@ -43,17 +44,31 @@ class BiofilmNewtonSolver:
         self.maxtimestep = maxtimestep
         self.eps = eps
         self.Kp1 = Kp1
-        self.Eta_vec = np.ones(4) if eta_vec is None else np.asarray(eta_vec, dtype=float)
+        # Species dimensionality
+        if active_species is not None:
+            inferred_species = len(active_species)
+        elif np.isscalar(phi_init):
+            inferred_species = 4 if species_count is None else species_count
+        else:
+            inferred_species = len(np.asarray(phi_init, dtype=float))
+        self.n = species_count or inferred_species
+
+        self.Eta_vec = np.ones(self.n) if eta_vec is None else np.asarray(eta_vec, dtype=float)
+        if self.Eta_vec.shape != (self.n,):
+            raise ValueError(f"eta_vec must have length {self.n}")
         self.Eta_phi_vec = self.Eta_vec.copy()
         self.c_const = float(c_const)
         self.alpha_const = float(alpha_const)
 
-        # Use scalar phi_init for all species (parameter masking controls active species)
-        if not np.isscalar(phi_init):
-            raise ValueError("phi_init must be a scalar value")
-        self.phi_init = float(phi_init)
+        # Support scalar or vector phi_init
+        if np.isscalar(phi_init):
+            self.phi_init = np.full(self.n, float(phi_init))
+        else:
+            self.phi_init = np.asarray(phi_init, dtype=float)
+            if self.phi_init.shape != (self.n,):
+                raise ValueError(f"phi_init must be a scalar or length-{self.n} vector")
         self.active_species = active_species
-        self.use_numba = use_numba and HAS_NUMBA
+        self.use_numba = use_numba and HAS_NUMBA and self.n == 4
 
     def c(self, t): return self.c_const
     def alpha(self, t): return self.alpha_const
@@ -63,26 +78,46 @@ class BiofilmNewtonSolver:
         """
         Convert parameter vector to interaction matrix A and growth vector b.
 
-        If active_species is specified, inactive species parameters are zeroed out.
-        This enables true 2-species submodels (M1: species 1-2, M2: species 3-4).
+        Two formats are supported:
+        - Legacy 4-species vector of length 14 (Case II parameterization)
+        - Generic symmetric upper-triangular layout of length n(n+1)/2 + n
+
+        If active_species is provided, the returned matrices are restricted to
+        the active subset to enable true lower-order submodels.
         """
         theta = np.asarray(theta, dtype=float)
-        a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta
-        A = np.array([
-            [a11, a12, a13, a14],
-            [a12, a22, a23, a24],
-            [a13, a23, a33, a34],
-            [a14, a24, a34, a44]
-        ], dtype=float)
-        b_diag = np.array([b1, b2, b3, b4], dtype=float)
 
-        # Zero out inactive species interactions for 2-species submodels
+        if theta.shape == (14,):
+            a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta
+            A_full = np.array([
+                [a11, a12, a13, a14],
+                [a12, a22, a23, a24],
+                [a13, a23, a33, a34],
+                [a14, a24, a34, a44]
+            ], dtype=float)
+            b_full = np.array([b1, b2, b3, b4], dtype=float)
+        else:
+            expected = self.n * (self.n + 1) // 2 + self.n
+            if theta.size != expected:
+                raise ValueError(
+                    f"theta must have length 14 for legacy 4-species mode or {expected} for n={self.n}"
+                )
+            A_full = np.zeros((self.n, self.n), dtype=float)
+            idx = 0
+            for i in range(self.n):
+                for j in range(i, self.n):
+                    A_full[i, j] = theta[idx]
+                    A_full[j, i] = theta[idx]
+                    idx += 1
+            b_full = theta[idx: idx + self.n]
+
         if self.active_species is not None:
-            inactive = [i for i in range(4) if i not in self.active_species]
-            for i in inactive:
-                A[i, :] = 0.0  # Row i: species i interactions
-                A[:, i] = 0.0  # Col i: interactions with species i
-                b_diag[i] = 0.0  # Growth rate of species i
+            active_idx = np.array(self.active_species, dtype=int)
+            A = A_full[np.ix_(active_idx, active_idx)]
+            b_diag = b_full[active_idx]
+        else:
+            A = A_full
+            b_diag = b_full
 
         return A, b_diag
 
@@ -94,41 +129,50 @@ class BiofilmNewtonSolver:
         For 2-species submodels, all species start at the same `phi_init`,
         and inactive species are kept fixed via masking during iteration.
         """
-        phi_vec = np.array([self.phi_init] * 4)
+        phi_vec = np.maximum(self.phi_init, 1e-8)
         phi0 = 1.0 - np.sum(phi_vec)
-        psi_vec = np.array([0.999] * 4)
+        psi_vec = np.array([0.999] * self.n)
         gamma = 1e-6
-        g0 = np.zeros(10)
-        g0[0:4] = phi_vec
-        g0[4] = phi0
-        g0[5:9] = psi_vec
-        g0[9] = gamma
+        g0 = np.zeros(2 * self.n + 2)
+        g0[0:self.n] = phi_vec
+        g0[self.n] = phi0
+        g0[self.n + 1:self.n + 1 + self.n] = psi_vec
+        g0[-1] = gamma
         return g0
 
     # Q（numpy版）: re_numba.py からコピペ
     def _compute_Q_vector_numpy(self, g_new, g_old, t, dt, A, b_diag):
-        phi_new, phi0_new, psi_new, gamma_new = g_new[0:4], g_new[4], g_new[5:9], g_new[9]
-        phi_old, phi0_old, psi_old = g_old[0:4], g_old[4], g_old[5:9]
+        n = self.n
+        phi_new, phi0_new = g_new[0:n], g_new[n]
+        psi_new, gamma_new = g_new[n + 1:n + 1 + n], g_new[-1]
+        phi_old, phi0_old = g_old[0:n], g_old[n]
+        psi_old = g_old[n + 1:n + 1 + n]
+
         phidot = (phi_new - phi_old) / dt
         phi0dot = (phi0_new - phi0_old) / dt
         psidot = (psi_new - psi_old) / dt
-        Q = np.zeros(10)
+        Q = np.zeros(2 * n + 2)
         CapitalPhi = phi_new * psi_new
         Interaction = A @ CapitalPhi
         c_val = self.c(t)
         term1_phi = (self.Kp1 * (2.0 - 4.0 * phi_new)) / (np.power(phi_new - 1.0, 3) * np.power(phi_new, 3))
-        term2_phi = (1.0 / self.Eta_vec) * (gamma_new + (self.Eta_phi_vec + self.Eta_vec * psi_new**2) * phidot +
-                                             self.Eta_vec * phi_new * psi_new * psidot)
+        term2_phi = (1.0 / self.Eta_vec) * (
+            gamma_new + (self.Eta_phi_vec + self.Eta_vec * psi_new**2) * phidot +
+            self.Eta_vec * phi_new * psi_new * psidot
+        )
         term3_phi = (c_val / self.Eta_vec) * psi_new * Interaction
-        Q[0:4] = term1_phi + term2_phi - term3_phi
-        Q[4] = gamma_new + (self.Kp1 * (2.0 - 4.0 * phi0_new)) / (np.power(phi0_new - 1.0, 3) * np.power(phi0_new, 3)) + phi0dot
-        term1_psi = (-2.0 * self.Kp1) / (np.power(psi_new - 1.0, 2) * np.power(psi_new, 3)) - \
-                    (2.0 * self.Kp1) / (np.power(psi_new - 1.0, 3) * np.power(psi_new, 2))
+        Q[0:n] = term1_phi + term2_phi - term3_phi
+        Q[n] = gamma_new + (self.Kp1 * (2.0 - 4.0 * phi0_new)) / (
+            np.power(phi0_new - 1.0, 3) * np.power(phi0_new, 3)
+        ) + phi0dot
+        term1_psi = (-2.0 * self.Kp1) / (np.power(psi_new - 1.0, 2) * np.power(psi_new, 3)) - (
+            2.0 * self.Kp1) / (np.power(psi_new - 1.0, 3) * np.power(psi_new, 2)
+        )
         term2_psi = (b_diag * self.alpha(t) / self.Eta_vec) * psi_new
         term3_psi = phi_new * psi_new * phidot + phi_new**2 * psidot
         term4_psi = (c_val / self.Eta_vec) * phi_new * Interaction
-        Q[5:9] = term1_psi + term2_psi + term3_psi - term4_psi
-        Q[9] = np.sum(phi_new) + phi0_new - 1.0
+        Q[n + 1:n + 1 + n] = term1_psi + term2_psi + term3_psi - term4_psi
+        Q[-1] = np.sum(phi_new) + phi0_new - 1.0
         return Q
 
     def compute_Q_vector(self, g_new, g_old, t, dt, A, b_diag):
@@ -139,68 +183,76 @@ class BiofilmNewtonSolver:
                 dt, self.Kp1, self.Eta_vec, self.Eta_phi_vec,
                 self.c(t), self.alpha(t), A, b_diag
             )
-        else:
-            return self._compute_Q_vector_numpy(g_new, g_old, t, dt, A, b_diag)
+        return self._compute_Q_vector_numpy(g_new, g_old, t, dt, A, b_diag)
 
     # K（numpy版）: re_numba.py の _compute_Jacobian_numpy をコピペ
     def _compute_Jacobian_numpy(self, g_new, g_old, t, dt, A, b_diag):
+        n = self.n
         v = g_new
-        phi_new, phi0_new, psi_new = g_new[0:4], g_new[4], g_new[5:9]
-        phidot = (phi_new - g_old[0:4]) / dt
-        psidot = (psi_new - g_old[5:9]) / dt
+        phi_new, phi0_new, psi_new = g_new[0:n], g_new[n], g_new[n + 1:n + 1 + n]
+        phidot = (phi_new - g_old[0:n]) / dt
+        psidot = (psi_new - g_old[n + 1:n + 1 + n]) / dt
         c_val = self.c(t)
         CapitalPhi = phi_new * psi_new
         Interaction = A @ CapitalPhi
-        K = np.zeros((10, 10))
-        
-        phi_p_deriv = (self.Kp1*(-4. + 8.*v[0:4]))/(np.power(v[0:4],3)*np.power(v[0:4]-1.,3)) - \
-                      (self.Kp1*(2. - 4.*v[0:4]))*(3./(np.power(v[0:4],4)*np.power(v[0:4]-1.,3)) +
-                                                   3./(np.power(v[0:4],3)*np.power(v[0:4]-1.,4)))
-        phi0_p_deriv = (self.Kp1*(-4. + 8.*v[4]))/(np.power(v[4],3)*np.power(v[4]-1.,3)) - \
-                       (self.Kp1*(2. - 4.*v[4]))*(3./(np.power(v[4],4)*np.power(v[4]-1.,3)) +
-                                                  3./(np.power(v[4],3)*np.power(v[4]-1.,4)))
-        psi_p_deriv = (4.0 * self.Kp1 * (3.0 - 5.0*v[5:9] + 5.0*v[5:9]**2)) / \
-                      (np.power(v[5:9], 4) * np.power(v[5:9] - 1.0, 4))
-        
-        for i in range(4):
-            for j in range(4):
+        K = np.zeros((2 * n + 2, 2 * n + 2))
+
+        phi_p_deriv = (self.Kp1 * (-4. + 8. * v[0:n])) / (np.power(v[0:n], 3) * np.power(v[0:n] - 1., 3)) - (
+            self.Kp1 * (2. - 4. * v[0:n])
+        ) * (
+            3. / (np.power(v[0:n], 4) * np.power(v[0:n] - 1., 3)) +
+            3. / (np.power(v[0:n], 3) * np.power(v[0:n] - 1., 4))
+        )
+        phi0_p_deriv = (self.Kp1 * (-4. + 8. * v[n])) / (np.power(v[n], 3) * np.power(v[n] - 1., 3)) - (
+            self.Kp1 * (2. - 4. * v[n])
+        ) * (
+            3. / (np.power(v[n], 4) * np.power(v[n] - 1., 3)) +
+            3. / (np.power(v[n], 3) * np.power(v[n] - 1., 4))
+        )
+        psi_p_deriv = (4.0 * self.Kp1 * (3.0 - 5.0 * v[n + 1:n + 1 + n] + 5.0 * v[n + 1:n + 1 + n]**2)) / (
+            np.power(v[n + 1:n + 1 + n], 4) * np.power(v[n + 1:n + 1 + n] - 1.0, 4)
+        )
+
+        for i in range(n):
+            for j in range(n):
                 K[i, j] = (c_val / self.Eta_vec[i]) * psi_new[i] * (-A[i, j] * psi_new[j])
             K[i, i] = phi_p_deriv[i] + (1.0 / self.Eta_vec[i]) * (
                 (self.Eta_phi_vec[i] + self.Eta_vec[i] * psi_new[i]**2) / dt +
-                self.Eta_vec[i] * psi_new[i] * psidot[i]) - \
-                (c_val / self.Eta_vec[i]) * (psi_new[i] * (Interaction[i] + A[i, i] * psi_new[i]))
-            K[i, 4] = 0.0
-            for j in range(4):
-                K[i, j+5] = (c_val / self.Eta_vec[i]) * psi_new[i] * (-A[i, j] * phi_new[j])
-            K[i, i+5] = (1.0 / self.Eta_vec[i]) * (
+                self.Eta_vec[i] * psi_new[i] * psidot[i]
+            ) - (c_val / self.Eta_vec[i]) * (psi_new[i] * (Interaction[i] + A[i, i] * psi_new[i]))
+            K[i, n] = 0.0
+            for j in range(n):
+                K[i, j + n + 1] = (c_val / self.Eta_vec[i]) * psi_new[i] * (-A[i, j] * phi_new[j])
+            K[i, i + n + 1] = (1.0 / self.Eta_vec[i]) * (
                 2.0 * self.Eta_vec[i] * psi_new[i] * phidot[i] +
                 self.Eta_vec[i] * phi_new[i] * psidot[i] +
-                self.Eta_vec[i] * phi_new[i] * psi_new[i] / dt) - \
-                (c_val / self.Eta_vec[i]) * ((Interaction[i] + A[i, i] * phi_new[i] * psi_new[i]) +
-                                              psi_new[i] * (A[i, i] * phi_new[i]))
-            K[i, 9] = 1.0 / self.Eta_vec[i]
-        
-        K[4, 4] = phi0_p_deriv + 1.0/dt
-        K[4, 9] = 1.0
-        
-        for i in range(4):
-            k = i + 5
-            for j in range(4):
-                K[k, j] = -(c_val / self.Eta_vec[i]) * (A[i, j] * psi_new[j] * phi_new[i] +
-                           Interaction[i] * (1.0 if i == j else 0.0))
-            K[k, i] = (psi_new[i] * phidot[i] + psi_new[i] * phi_new[i] / dt +
-                       2.0 * phi_new[i] * psidot[i]) - \
-                      (c_val / self.Eta_vec[i]) * (A[i, i] * psi_new[i] * phi_new[i] +
-                                                    Interaction[i] + phi_new[i] * A[i, i] * psi_new[i])
-            K[k, 4] = 0.0
-            for j in range(4):
-                K[k, j+5] = -(c_val / self.Eta_vec[i]) * phi_new[i] * A[i, j] * phi_new[j]
-            K[k, i+5] = psi_p_deriv[i] + (b_diag[i] * self.alpha(t) / self.Eta_vec[i]) + \
-                        (phi_new[i] * phidot[i] + phi_new[i]**2 / dt) - \
-                        (c_val / self.Eta_vec[i]) * phi_new[i] * A[i, i] * phi_new[i]
-            K[k, 9] = 0.0
-        
-        K[9, 0:5] = 1.0
+                self.Eta_vec[i] * phi_new[i] * psi_new[i] / dt
+            ) - (c_val / self.Eta_vec[i]) * (
+                (Interaction[i] + A[i, i] * phi_new[i] * psi_new[i]) + psi_new[i] * (A[i, i] * phi_new[i])
+            )
+            K[i, -1] = 1.0 / self.Eta_vec[i]
+
+        K[n, n] = phi0_p_deriv + 1.0 / dt
+        K[n, -1] = 1.0
+
+        for i in range(n):
+            k = i + n + 1
+            for j in range(n):
+                K[k, j] = -(c_val / self.Eta_vec[i]) * (
+                    A[i, j] * psi_new[j] * phi_new[i] + Interaction[i] * (1.0 if i == j else 0.0)
+                )
+            K[k, i] = (psi_new[i] * phidot[i] + psi_new[i] * phi_new[i] / dt + 2.0 * phi_new[i] * psidot[i]) - (
+                c_val / self.Eta_vec[i]
+            ) * (A[i, i] * psi_new[i] * phi_new[i] + Interaction[i] + phi_new[i] * A[i, i] * psi_new[i])
+            K[k, n] = 0.0
+            for j in range(n):
+                K[k, j + n + 1] = -(c_val / self.Eta_vec[i]) * phi_new[i] * A[i, j] * phi_new[j]
+            K[k, i + n + 1] = psi_p_deriv[i] + (b_diag[i] * self.alpha(t) / self.Eta_vec[i]) + (
+                phi_new[i] * phidot[i] + phi_new[i]**2 / dt
+            ) - (c_val / self.Eta_vec[i]) * phi_new[i] * A[i, i] * phi_new[i]
+            K[k, -1] = 0.0
+
+        K[-1, 0:n + 1] = 1.0
         return K
 
     def compute_Jacobian_matrix(self, g_new, g_old, t, dt, A, b_diag):
@@ -211,8 +263,7 @@ class BiofilmNewtonSolver:
                 dt, self.Kp1, self.Eta_vec, self.Eta_phi_vec,
                 self.c(t), self.alpha(t), A, b_diag
             )
-        else:
-            return self._compute_Jacobian_numpy(g_new, g_old, t, dt, A, b_diag)
+        return self._compute_Jacobian_numpy(g_new, g_old, t, dt, A, b_diag)
 
     # 前進シミュレーション（re_numba の run_deterministic とほぼ同じ）
     def run_deterministic(self, theta, show_progress=False):
@@ -237,20 +288,22 @@ class BiofilmNewtonSolver:
                 # Safeguards: prevent phi/psi from approaching zero
                 phi_min = 1e-8
                 psi_min = 1e-8
-                g_new[0:4] = np.maximum(g_new[0:4], phi_min)
-                g_new[4] = np.maximum(g_new[4], phi_min)
-                g_new[5:9] = np.maximum(g_new[5:9], psi_min)
+                g_new[0:self.n] = np.maximum(g_new[0:self.n], phi_min)
+                g_new[self.n] = np.maximum(g_new[self.n], phi_min)
+                g_new[self.n + 1:self.n + 1 + self.n] = np.maximum(
+                    g_new[self.n + 1:self.n + 1 + self.n], psi_min
+                )
 
                 # Enforce inactive species staying at initial values
                 if self.active_species is not None:
-                    inactive = [i for i in range(4) if i not in self.active_species]
+                    inactive = [i for i in range(self.n) if i not in self.active_species]
                     for i in inactive:
-                        g_new[i] = self.phi_init
-                        g_new[i+5] = g_prev[i+5]
+                        g_new[i] = max(self.phi_init[i], phi_min)
+                        g_new[self.n + 1 + i] = g_prev[self.n + 1 + i]
                 if np.max(np.abs(Q)) < eps:
                     break
             g_prev = g_new.copy()
-            t_list.append(tt)
+            t_list.append((step + 1) / maxtimestep)
             g_list.append(g_new.copy())
 
             if pbar and step % 100 == 0:
