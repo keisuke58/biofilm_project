@@ -1,0 +1,528 @@
+name: Complete Automated Analysis Pipeline
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'src/**'
+      - 'main_*.py'
+      - 'examples/**'
+  pull_request:
+    branches: ["main", "master"]
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: 'Run mode (debug or production)'
+        required: false
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - production
+      skip_notebooks:
+        description: 'Skip notebook conversion'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+  RESULTS_DIR: 'results'
+
+jobs:
+  # ============================================================================
+  # Job 1: TMCMC Calibration
+  # ============================================================================
+  tmcmc-calibration:
+    name: "1️⃣ TMCMC Calibration"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      run_mode: ${{ steps.setup.outputs.run_mode }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Determine run mode
+        id: setup
+        run: |
+          MODE="${{ github.event.inputs.run_mode || 'debug' }}"
+          echo "run_mode=$MODE" >> $GITHUB_OUTPUT
+          echo "Running in $MODE mode"
+
+      - name: Run TMCMC calibration
+        run: |
+          python main_calibration.py
+        env:
+          DEBUG: ${{ steps.setup.outputs.run_mode == 'debug' && 'true' || 'false' }}
+
+      - name: Upload calibration results
+        uses: actions/upload-artifact@v4
+        with:
+          name: tmcmc-results
+          path: |
+            results/*.npz
+            results/*_samples.npy
+            results/*_theta.npy
+          retention-days: 30
+
+  # ============================================================================
+  # Job 2: TSM Sensitivity Analysis
+  # ============================================================================
+  tsm-sensitivity:
+    name: "2️⃣ TSM Sensitivity Analysis"
+    runs-on: ubuntu-latest
+    needs: tmcmc-calibration
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install matplotlib seaborn
+
+      - name: Download calibration results
+        uses: actions/download-artifact@v4
+        with:
+          name: tmcmc-results
+          path: results/
+
+      - name: Run TSM sensitivity analysis
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          import numpy as np
+          from src.config import CONFIG, get_theta_true
+          from src.tsm import compute_tsm_sensitivity
+          from src.solver_newton import BiofilmNewtonSolver
+          import matplotlib.pyplot as plt
+
+          # Compute sensitivities for all models
+          for model in ['M1', 'M2', 'M3']:
+              print(f'Computing TSM sensitivity for {model}...')
+              theta = get_theta_true()
+              config = CONFIG[model]
+
+              try:
+                  S = compute_tsm_sensitivity(theta, config)
+                  np.save(f'results/sensitivity_{model}.npy', S)
+                  print(f'✓ {model} sensitivity computed: {S.shape}')
+              except Exception as e:
+                  print(f'✗ {model} failed: {e}')
+
+          print('TSM sensitivity analysis complete!')
+          "
+
+      - name: Generate sensitivity plots
+        run: |
+          python -c "
+          import numpy as np
+          import matplotlib.pyplot as plt
+
+          for model in ['M1', 'M2', 'M3']:
+              try:
+                  S = np.load(f'results/sensitivity_{model}.npy')
+
+                  fig, axes = plt.subplots(S.shape[1], 1, figsize=(10, 2*S.shape[1]))
+                  if S.shape[1] == 1:
+                      axes = [axes]
+
+                  for i, ax in enumerate(axes):
+                      ax.plot(S[:, i], linewidth=2)
+                      ax.set_ylabel(f'∂y/∂θ[{i}]')
+                      ax.grid(True, alpha=0.3)
+
+                  axes[-1].set_xlabel('Time Step')
+                  plt.suptitle(f'{model} Sensitivity Analysis')
+                  plt.tight_layout()
+                  plt.savefig(f'results/sensitivity_{model}.png', dpi=150)
+                  plt.close()
+                  print(f'✓ {model} plot saved')
+              except Exception as e:
+                  print(f'✗ {model} plot failed: {e}')
+          "
+
+      - name: Upload sensitivity results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensitivity-results
+          path: |
+            results/sensitivity_*.npy
+            results/sensitivity_*.png
+          retention-days: 30
+
+  # ============================================================================
+  # Job 3: Forward Simulation & Uncertainty Quantification
+  # ============================================================================
+  forward-simulation:
+    name: "3️⃣ Forward Simulation & UQ"
+    runs-on: ubuntu-latest
+    needs: tmcmc-calibration
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download calibration results
+        uses: actions/download-artifact@v4
+        with:
+          name: tmcmc-results
+          path: results/
+
+      - name: Run forward simulation
+        run: python main_simulation.py
+
+      - name: Compute predictive uncertainty
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          import numpy as np
+          from src.config import CONFIG
+          from src.hierarchical import hierarchical_case2
+          from src.solvers import solve_biofilm
+          import matplotlib.pyplot as plt
+
+          print('Running hierarchical calibration...')
+          results = hierarchical_case2(CONFIG)
+
+          # Get posterior samples
+          samples = results.tmcmc_M1.samples[-1][:100]  # Use 100 samples
+
+          print('Computing predictive uncertainty...')
+          predictions = []
+          for i, theta in enumerate(samples):
+              if i % 20 == 0:
+                  print(f'  Sample {i+1}/100')
+              try:
+                  pred = solve_biofilm(theta, CONFIG['M1'])
+                  predictions.append(pred)
+              except:
+                  pass
+
+          predictions = np.array(predictions)
+
+          # Save results
+          np.save('results/predictions.npy', predictions)
+
+          # Compute statistics
+          mean_pred = np.mean(predictions, axis=0)
+          std_pred = np.std(predictions, axis=0)
+          lower = np.percentile(predictions, 2.5, axis=0)
+          upper = np.percentile(predictions, 97.5, axis=0)
+
+          np.save('results/prediction_mean.npy', mean_pred)
+          np.save('results/prediction_std.npy', std_pred)
+          np.save('results/prediction_ci.npy', np.stack([lower, upper]))
+
+          # Plot
+          fig, ax = plt.subplots(figsize=(10, 6))
+          t = np.arange(len(mean_pred))
+          ax.fill_between(t, lower[:, 0], upper[:, 0], alpha=0.3, label='95% CI')
+          ax.plot(t, mean_pred[:, 0], 'b-', linewidth=2, label='Mean')
+          ax.set_xlabel('Time Step')
+          ax.set_ylabel('Volume Fraction')
+          ax.set_title('Predictive Uncertainty')
+          ax.legend()
+          ax.grid(True, alpha=0.3)
+          plt.tight_layout()
+          plt.savefig('results/predictive_uncertainty.png', dpi=150)
+
+          print('✓ Predictive uncertainty computed!')
+          "
+
+      - name: Upload simulation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-results
+          path: |
+            results/forward_simulation.png
+            results/predictions.npy
+            results/prediction_*.npy
+            results/predictive_uncertainty.png
+          retention-days: 30
+
+  # ============================================================================
+  # Job 4: Performance Profiling & Benchmarking
+  # ============================================================================
+  profiling-benchmark:
+    name: "4️⃣ Profiling & Benchmarking"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install memory_profiler
+
+      - name: Run performance profiling
+        run: |
+          python tools/profile_performance.py --component all > results/profile_report.txt
+          cat results/profile_report.txt
+
+      - name: Run benchmark suite
+        run: |
+          python tools/benchmark_suite.py --output results/benchmarks.json --quick
+
+      - name: Run memory profiling
+        run: |
+          python tools/memory_profile.py --component analysis > results/memory_analysis.txt
+          cat results/memory_analysis.txt
+
+      - name: Upload profiling results
+        uses: actions/upload-artifact@v4
+        with:
+          name: profiling-results
+          path: |
+            results/profile_report.txt
+            results/benchmarks.json
+            results/memory_analysis.txt
+          retention-days: 30
+
+  # ============================================================================
+  # Job 5: Notebook Conversion
+  # ============================================================================
+  notebook-conversion:
+    name: "5️⃣ Notebook Conversion"
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_notebooks }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install jupyter nbconvert jupyter-contrib-nbextensions
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-plain-generic
+
+      - name: Convert notebooks to HTML
+        run: |
+          mkdir -p results/notebooks/html
+          for notebook in examples/*.ipynb; do
+            name=$(basename "$notebook" .ipynb)
+            echo "Converting $name to HTML..."
+            jupyter nbconvert --to html --output-dir results/notebooks/html "$notebook" || echo "Failed: $name"
+          done
+
+      - name: Convert notebooks to PDF
+        continue-on-error: true
+        run: |
+          mkdir -p results/notebooks/pdf
+          for notebook in examples/*.ipynb; do
+            name=$(basename "$notebook" .ipynb)
+            echo "Converting $name to PDF..."
+            jupyter nbconvert --to pdf --output-dir results/notebooks/pdf "$notebook" || echo "Failed: $name"
+          done
+
+      - name: Execute notebooks
+        continue-on-error: true
+        run: |
+          mkdir -p results/notebooks/executed
+          for notebook in examples/*.ipynb; do
+            name=$(basename "$notebook" .ipynb)
+            echo "Executing $name..."
+            jupyter nbconvert --to notebook --execute --output-dir results/notebooks/executed "$notebook" || echo "Failed: $name"
+          done
+
+      - name: Upload converted notebooks
+        uses: actions/upload-artifact@v4
+        with:
+          name: converted-notebooks
+          path: results/notebooks/
+          retention-days: 30
+
+  # ============================================================================
+  # Job 6: Complete Report Generation
+  # ============================================================================
+  generate-report:
+    name: "6️⃣ Complete Report Generation"
+    runs-on: ubuntu-latest
+    needs: [tmcmc-calibration, tsm-sensitivity, forward-simulation, profiling-benchmark]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-latex-extra texlive-fonts-recommended
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Merge results
+        run: |
+          mkdir -p results
+          find artifacts -type f -exec cp {} results/ \;
+          ls -la results/
+
+      - name: Run full calibration report
+        run: |
+          python main_calibration_report.py
+        continue-on-error: true
+
+      - name: Generate summary report
+        run: |
+          python -c "
+          import json
+          from datetime import datetime
+
+          report = {
+              'timestamp': datetime.now().isoformat(),
+              'status': 'completed',
+              'artifacts': [
+                  'TMCMC calibration results',
+                  'TSM sensitivity analysis',
+                  'Forward simulations',
+                  'Predictive uncertainty',
+                  'Performance profiling',
+                  'Benchmarks',
+                  'Converted notebooks',
+                  'PDF reports'
+              ],
+              'github_run': '${{ github.run_id }}'
+          }
+
+          with open('results/analysis_summary.json', 'w') as f:
+              json.dump(report, f, indent=2)
+
+          # Create markdown report
+          with open('results/ANALYSIS_REPORT.md', 'w') as f:
+              f.write('# Automated Analysis Report\n\n')
+              f.write(f'**Run ID:** ${{ github.run_id }}\n')
+              f.write(f'**Date:** {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}\n')
+              f.write(f'**Branch:** ${{ github.ref_name }}\n')
+              f.write(f'**Commit:** ${{ github.sha[:8] }}\n\n')
+              f.write('## Completed Tasks\n\n')
+              for artifact in report['artifacts']:
+                  f.write(f'- ✅ {artifact}\n')
+              f.write('\n## Artifacts\n\n')
+              f.write('All results are available in the workflow artifacts.\n')
+          "
+
+      - name: Upload complete results
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-analysis-results
+          path: results/
+          retention-days: 90
+
+      - name: Create release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            results/bayesian_report.pdf
+            results/*.png
+            results/analysis_summary.json
+            results/ANALYSIS_REPORT.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # Job 7: Summary & Notification
+  # ============================================================================
+  summary:
+    name: "7️⃣ Generate Summary"
+    runs-on: ubuntu-latest
+    needs: [tmcmc-calibration, tsm-sensitivity, forward-simulation, profiling-benchmark, notebook-conversion, generate-report]
+    if: always()
+
+    steps:
+      - name: Create job summary
+        run: |
+          echo "# 🎉 Automated Analysis Pipeline Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TMCMC Calibration | ${{ needs.tmcmc-calibration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TSM Sensitivity | ${{ needs.tsm-sensitivity.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forward Simulation | ${{ needs.forward-simulation.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Profiling & Benchmark | ${{ needs.profiling-benchmark.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Notebook Conversion | ${{ needs.notebook-conversion.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Report Generation | ${{ needs.generate-report.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- `tmcmc-results` - Calibration outputs" >> $GITHUB_STEP_SUMMARY
+          echo "- `sensitivity-results` - TSM sensitivity analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- `simulation-results` - Forward simulations & UQ" >> $GITHUB_STEP_SUMMARY
+          echo "- `profiling-results` - Performance metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- `converted-notebooks` - HTML/PDF notebooks" >> $GITHUB_STEP_SUMMARY
+          echo "- `complete-analysis-results` - All results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated on $(date)*" >> $GITHUB_STEP_SUMMARY
