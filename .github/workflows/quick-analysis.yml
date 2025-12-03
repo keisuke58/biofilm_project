@@ -19,7 +19,7 @@ jobs:
   quick-analysis:
     name: Quick ${{ inputs.analysis_type }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
