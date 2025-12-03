@@ -22,7 +22,7 @@ class BiofilmNewtonSolver:
     def __init__(self, dt=1e-5, maxtimestep=2500, eps=1e-6, Kp1=1e-4,
                  eta_vec=None, c_const=100.0, alpha_const=100.0,
                  phi_init=0.02, use_numba=True, active_species=None,
-                 species_count=None):
+                 species_count=None, theta_indices=None):
         """
         Initialize BiofilmNewtonSolver.
 
@@ -52,6 +52,12 @@ class BiofilmNewtonSolver:
         else:
             inferred_species = len(np.asarray(phi_init, dtype=float))
         self.n = species_count or inferred_species
+
+        # Optional mapping that selects which five Case-II parameters belong to
+        # a 2-species submodel (e.g., [0..4] for M1 or [5..9] for M2). When
+        # provided, legacy 14-length theta vectors are sliced before building
+        # A/b, ensuring that “absent” species never influence the dynamics.
+        self.theta_indices = None if theta_indices is None else np.asarray(theta_indices, dtype=int)
 
         self.Eta_vec = np.ones(self.n) if eta_vec is None else np.asarray(eta_vec, dtype=float)
         if self.Eta_vec.shape != (self.n,):
@@ -86,6 +92,8 @@ class BiofilmNewtonSolver:
         the active subset to enable true lower-order submodels.
         """
         theta = np.asarray(theta, dtype=float)
+        if theta.shape == (14,) and self.theta_indices is not None and self.n == 2:
+            theta = theta[self.theta_indices]
 
         if theta.shape == (14,):
             a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta
@@ -102,6 +110,9 @@ class BiofilmNewtonSolver:
                 raise ValueError(
                     f"theta must have length 14 for legacy 4-species mode or {expected} for n={self.n}"
                 )
+            # When theta_indices is provided, we already sliced the legacy
+            # vector above; here we simply unpack the generic symmetric layout
+            # for arbitrary n.
             A_full = np.zeros((self.n, self.n), dtype=float)
             idx = 0
             for i in range(self.n):

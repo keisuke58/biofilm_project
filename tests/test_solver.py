@@ -154,6 +154,21 @@ class TestBiofilmNewtonSolver:
         np.testing.assert_allclose(t[-1], 1.0)
         np.testing.assert_allclose(np.diff(t), 1.0 / solver.maxtimestep, rtol=1e-10)
 
+    def test_two_species_theta_slicing(self, theta_true):
+        """Two-species submodels should ignore parameters outside their slice."""
+        solver = BiofilmNewtonSolver(
+            phi_init=[0.1, 0.1],
+            species_count=2,
+            theta_indices=[5, 6, 7, 8, 9],
+            dt=1e-4,
+            maxtimestep=5,
+            use_numba=False,
+        )
+
+        A, b_diag = solver.theta_to_matrices(theta_true)
+        np.testing.assert_allclose(A.shape, (2, 2))
+        np.testing.assert_allclose(b_diag, theta_true[8:10])
+
     @pytest.mark.parametrize("use_numba", [True, False])
     def test_numba_vs_numpy_consistency(self, theta_true, use_numba):
         """Test that Numba and NumPy versions give similar results"""
