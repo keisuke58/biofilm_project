@@ -288,11 +288,21 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
         Parameter vector for the active subset of parameters.
     config : dict
         Configuration dictionary containing solver settings such as
-        ``dt``, ``maxtimestep``, ``c_const``, and ``alpha_const``.
+        ``dt``, ``maxtimestep``, ``c_const``, and ``alpha_const``. When
+        provided, the following optional keys further tailor the
+        sensitivity calculation:
+
+        - ``phi_init`` / ``phi_init_M1``: Initial volume fraction
+        - ``active_species`` / ``active_species_M1``: Subset of active species
+        - ``species_count``: Explicit species dimensionality (e.g., ``2``)
+        - ``theta_indices`` / ``theta_active_indices``: Mapping for
+          Case-II parameter subsets (e.g., ``[0..4]`` for M1)
+
     active_theta_indices : list[int], optional
         Indices (0-based) of the active parameters within the full 14-D
-        parameter vector. If omitted, the first ``len(theta)`` entries
-        are used.
+        parameter vector. If omitted, the configuration-supplied mapping
+        is used; if that is also missing, the first ``len(theta)``
+        entries are used.
     use_analytical : bool
         Whether to use analytical sensitivity (Numba-backed) when available.
 
@@ -307,12 +317,24 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
     from .solver_newton import BiofilmNewtonSolver
 
     theta = np.asarray(theta, dtype=float)
+    if active_theta_indices is None:
+        active_theta_indices = (config.get("theta_indices")
+                                or config.get("theta_active_indices"))
+
     active_idx = (list(range(len(theta))) if active_theta_indices is None
                   else list(active_theta_indices))
 
-    # Build full 14-dimensional theta vector
+    # Build full 14-dimensional theta vector (tolerate both active-subset and
+    # full-length theta inputs)
     theta_full = np.zeros(14, dtype=float)
-    theta_full[active_idx] = theta
+    if theta.size == theta_full.size:
+        theta_full[:] = theta
+    elif theta.size == len(active_idx):
+        theta_full[active_idx] = theta
+    else:
+        raise ValueError(
+            f"theta length {theta.size} incompatible with active indices of length {len(active_idx)}"
+        )
 
     # Instantiate solver with sensible defaults pulled from config
     solver = BiofilmNewtonSolver(
@@ -325,6 +347,9 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
         alpha_const=config.get("alpha_const", 100.0),
         phi_init=config.get("phi_init", config.get("phi_init_M1", 0.02)),
         use_numba=config.get("use_numba", True),
+        active_species=config.get("active_species", config.get("active_species_M1")),
+        species_count=config.get("species_count"),
+        theta_indices=config.get("theta_indices", config.get("theta_active_indices")),
     )
 
     tsm = BiofilmTSM(
