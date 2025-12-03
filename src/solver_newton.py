@@ -49,14 +49,7 @@ class BiofilmNewtonSolver:
         self.c_const = float(c_const)
         self.alpha_const = float(alpha_const)
 
-        # Support vector phi_init for 2-species submodels
-        if np.isscalar(phi_init):
-            self.phi_init = np.array([float(phi_init)] * 4)
-        else:
-            self.phi_init = np.asarray(phi_init, dtype=float)
-            if self.phi_init.shape != (4,):
-                raise ValueError(f"phi_init must be scalar or shape (4,), got {self.phi_init.shape}")
-
+        self.phi_init = float(phi_init)  # SCALAR ONLY (like reference program)
         self.active_species = active_species
         self.use_numba = use_numba and HAS_NUMBA
 
@@ -96,30 +89,21 @@ class BiofilmNewtonSolver:
         """
         Get initial state vector [phi1, phi2, phi3, phi4, phi0, psi1, psi2, psi3, psi4, gamma].
 
-        For 2-species submodels:
-        - M1: phi_init=[0.2, 0.2, 0.0, 0.0] → only species 1-2 are present
-        - M2: phi_init=[0.0, 0.0, 0.2, 0.2] → only species 3-4 are present
-        - M3: phi_init=[0.02, 0.02, 0.02, 0.02] → all 4 species present
+        CRITICAL: ALL species start at the SAME value (phi_init).
+        2-species behavior is achieved through active_species masking:
+        - M1: phi_init=0.2, active_species=[0,1] → species 3-4 stay at 0.2
+        - M2: phi_init=0.2, active_species=[2,3] → species 1-2 stay at 0.2
+        - M3: phi_init=0.02, active_species=None → all evolve from 0.02
 
-        Note: To avoid division by zero in PDE terms (phi^3 in denominator),
-        we use a small epsilon (1e-10) instead of exactly 0 for inactive species.
+        This avoids division by zero (no zeros in initial conditions).
         """
-        phi_vec = self.phi_init.copy()  # Now a vector
-
-        # Replace exact zeros with small epsilon to avoid division by zero
-        # This is numerically safe and species with zero interactions stay ~epsilon
-        eps_phi = 1e-10
-        phi_vec = np.where(phi_vec < eps_phi, eps_phi, phi_vec)
-
-        phi0 = 1.0 - np.sum(phi_vec)
-        psi_vec = np.array([0.999] * 4)
-        gamma = 1e-6
-        g0 = np.zeros(10)
-        g0[0:4] = phi_vec
-        g0[4] = phi0
-        g0[5:9] = psi_vec
-        g0[9] = gamma
-        return g0
+        phi0_init = 1.0 - 4 * self.phi_init  # Constraint: sum(phi) + phi0 = 1
+        return np.array([
+            self.phi_init, self.phi_init, self.phi_init, self.phi_init,  # phi_1..4
+            phi0_init,  # phi_0
+            0.999, 0.999, 0.999, 0.999,  # psi_1..4
+            1e-6  # gamma
+        ])
 
     # Q（numpy版）: re_numba.py からコピペ
     def _compute_Q_vector_numpy(self, g_new, g_old, t, dt, A, b_diag):
