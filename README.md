@@ -56,6 +56,16 @@ This project implements a sophisticated hierarchical Bayesian framework for cali
   - TMCMC diagnostics (β schedule, ESS, convergence)
   - Automated PDF report generation
 
+- **Interactive Examples**
+  - 5 Jupyter notebooks with hands-on tutorials
+  - End-to-end workflow examples
+  - Best practices and use cases
+
+- **Performance Optimization**
+  - Parallel TMCMC for multi-core CPUs (2-8x speedup)
+  - Comprehensive profiling and benchmarking tools
+  - Memory usage analysis and optimization
+
 ## 🚀 Installation
 
 ### Requirements
@@ -165,6 +175,24 @@ biofilm_project/
 ├── requirements-dev.txt          # Development dependencies
 ├── requirements-docs.txt         # Documentation dependencies
 └── README.md                     # This file
+```
+
+## 📓 Interactive Examples
+
+Explore the framework with hands-on Jupyter notebooks in the `examples/` directory:
+
+1. **01_basic_calibration.ipynb** - Complete end-to-end example
+2. **02_sensitivity_analysis.ipynb** - TSM parameter sensitivity
+3. **03_custom_priors.ipynb** - Bayesian prior specification
+4. **04_uncertainty_quantification.ipynb** - UQ workflow
+5. **05_advanced_visualization.ipynb** - Publication-quality figures
+
+```bash
+# Launch Jupyter
+jupyter notebook examples/
+
+# Or use Jupyter Lab
+jupyter lab examples/
 ```
 
 ## 📚 Documentation
@@ -319,6 +347,15 @@ open htmlcov/index.html
 ```
 
 ## ⚡ Performance
+
+### Performance Features
+
+- **Parallel TMCMC**: Multi-core CPU parallelization (NEW!)
+- **Numba JIT**: Automatic compilation for 10-100x speedup
+- **Profiling tools**: cProfile, memory_profiler integration
+- **Benchmarking suite**: Track performance across versions
+
+See [PERFORMANCE.md](PERFORMANCE.md) for detailed optimization guide.
 
 ### Computational Cost
 
