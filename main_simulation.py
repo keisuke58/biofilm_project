@@ -87,20 +87,19 @@ def main():
         _save_timeseries(run_output, output_dir)
         _plot_timeseries(run_output, output_dir)
 
-    np.savez(output_dir / "forward_simulation_timeseries.npz", t=t1, g=g1)
+    # Also save a combined NPZ for convenience/compatibility with earlier workflows.
+    combined_payload = {}
+    for run_output in runs:
+        model_name = run_output["model_name"]
+        combined_payload[f"{model_name}_t"] = run_output["t"]
+        combined_payload[f"{model_name}_g"] = run_output["g"]
 
-    num_species = g1.shape[1] if g1.ndim > 1 else 1
-    header_columns = ["time"] + [f"phi{i+1}" for i in range(num_species)]
-    np.savetxt(
-        output_dir / "forward_simulation_timeseries.csv",
-        np.column_stack([t1, g1]),
-        delimiter=",",
-        header=",".join(header_columns),
-        comments="",
-    )
+    np.savez(output_dir / "forward_simulation_timeseries.npz", **combined_payload)
 
     print("Simulation finished.")
-    print(f"Saved results to {output_dir} (case2_M1/M2/M3 timeseries and PNGs)")
+    print(
+        f"Saved results to {output_dir} (case2_M1/M2/M3 timeseries, PNGs, and combined NPZ)"
+    )
 
 
 if __name__ == "__main__":
