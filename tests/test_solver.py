@@ -78,7 +78,7 @@ class TestBiofilmNewtonSolver:
 
         time_diffs = np.diff(t)
         assert np.all(time_diffs > 0), "Time should be strictly increasing"
-        np.testing.assert_allclose(time_diffs, solver.dt, rtol=1e-10)
+        np.testing.assert_allclose(time_diffs, 1.0 / solver.maxtimestep, rtol=1e-10)
 
     def test_run_deterministic_positivity(self, solver, theta_true):
         """Test that volume fractions and porosity remain positive"""
@@ -135,6 +135,24 @@ class TestBiofilmNewtonSolver:
         expected_phi = np.maximum(phi_init_vec, 1e-8)
         np.testing.assert_allclose(g[0, 0:4], expected_phi, rtol=1e-10)
         np.testing.assert_allclose(g[0, 0:4].sum() + g[0, 4], 1.0, rtol=1e-10)
+
+    def test_dynamic_species_two_mode(self):
+        """Solver should run with n=2 using generic theta layout and normalized time."""
+        theta_generic = np.array([0.8, 0.2, 1.1, 0.05, 0.06])  # 3 upper-triangular + 2 b terms
+        solver = BiofilmNewtonSolver(
+            phi_init=[0.1, 0.1],
+            eta_vec=[1.0, 1.0],
+            dt=1e-4,
+            maxtimestep=20,
+            use_numba=False,
+            species_count=2,
+        )
+        t, g = solver.run_deterministic(theta_generic, show_progress=False)
+
+        assert g.shape[1] == 2 * solver.n + 2
+        np.testing.assert_allclose(t[0], 0.0)
+        np.testing.assert_allclose(t[-1], 1.0)
+        np.testing.assert_allclose(np.diff(t), 1.0 / solver.maxtimestep, rtol=1e-10)
 
     @pytest.mark.parametrize("use_numba", [True, False])
     def test_numba_vs_numpy_consistency(self, theta_true, use_numba):
