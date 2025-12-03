@@ -54,6 +54,15 @@ class TestHierarchicalCase2:
         assert hasattr(results, "tmcmc_M1")
         assert hasattr(results, "tmcmc_M2")
         assert hasattr(results, "tmcmc_M3")
+        assert hasattr(results, "data_M1")
+        assert hasattr(results, "data_M2")
+        assert hasattr(results, "data_M3")
+        assert hasattr(results, "t1_sparse")
+        assert hasattr(results, "t2_sparse")
+        assert hasattr(results, "t3_sparse")
+        assert hasattr(results, "idx1")
+        assert hasattr(results, "idx2")
+        assert hasattr(results, "idx3")
 
     def test_hierarchical_theta_dimensions(self, debug_config):
         """Test that estimated parameters have correct dimensions"""
@@ -96,15 +105,17 @@ class TestHierarchicalCase2:
         results = hierarchical_case2(debug_config)
 
         # Check that data is stored
-        assert hasattr(results, "data_M1")
-        assert hasattr(results, "data_M2")
-        assert hasattr(results, "data_M3")
-
-        # Check data shapes
+        # Check data shapes and time indices
         Ndata = debug_config["Ndata"]
         assert results.data_M1.shape == (Ndata, 2)  # 2 species for M1
         assert results.data_M2.shape == (Ndata, 2)  # 2 species for M2
         assert results.data_M3.shape == (Ndata, 4)  # 4 species for M3
+        assert results.t1_sparse.shape[0] == Ndata
+        assert results.t2_sparse.shape[0] == Ndata
+        assert results.t3_sparse.shape[0] == Ndata
+        assert results.idx1.shape[0] == Ndata
+        assert results.idx2.shape[0] == Ndata
+        assert results.idx3.shape[0] == Ndata
 
     def test_hierarchical_no_nan(self, debug_config):
         """Test that hierarchical updating produces no NaN values"""
@@ -141,12 +152,28 @@ class TestHierarchicalResultsDataclass:
         M1_samples = np.random.randn(100, 5)
         M2_samples = np.random.randn(100, 5)
         M3_samples = np.random.randn(100, 4)
+        data_M1 = np.random.randn(5, 2)
+        data_M2 = np.random.randn(5, 2)
+        data_M3 = np.random.randn(5, 4)
+        t1_sparse = np.linspace(0, 1, 5)
+        t2_sparse = np.linspace(0, 1, 5)
+        t3_sparse = np.linspace(0, 1, 5)
+        idx = np.arange(5)
         theta_final = np.random.randn(14)
 
         results = HierarchicalResults(
             M1_samples=M1_samples,
             M2_samples=M2_samples,
             M3_samples=M3_samples,
+            data_M1=data_M1,
+            data_M2=data_M2,
+            data_M3=data_M3,
+            t1_sparse=t1_sparse,
+            t2_sparse=t2_sparse,
+            t3_sparse=t3_sparse,
+            idx1=idx,
+            idx2=idx,
+            idx3=idx,
             theta_final=theta_final,
             theta_M1_mean=theta_final[0:5],
             theta_M2_mean=theta_final[5:10],

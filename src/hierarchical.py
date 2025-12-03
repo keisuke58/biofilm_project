@@ -38,6 +38,24 @@ class HierarchicalResults:
         Final posterior samples for M2 parameters (N, 5)
     M3_samples : np.ndarray
         Final posterior samples for M3 parameters (N, 4)
+    data_M1 : np.ndarray
+        Sparse observational data used in M1 calibration (Ndata, 2)
+    data_M2 : np.ndarray
+        Sparse observational data used in M2 calibration (Ndata, 2)
+    data_M3 : np.ndarray
+        Sparse observational data used in M3 calibration (Ndata, 4)
+    t1_sparse : np.ndarray
+        Time points corresponding to data_M1 indices
+    t2_sparse : np.ndarray
+        Time points corresponding to data_M2 indices
+    t3_sparse : np.ndarray
+        Time points corresponding to data_M3 indices
+    idx1 : np.ndarray
+        Indices of selected sparse observations for M1
+    idx2 : np.ndarray
+        Indices of selected sparse observations for M2
+    idx3 : np.ndarray
+        Indices of selected sparse observations for M3
     theta_M1_mean : np.ndarray
         Posterior mean of M1 parameters (5,)
     theta_M2_mean : np.ndarray
@@ -56,6 +74,15 @@ class HierarchicalResults:
     M1_samples: np.ndarray
     M2_samples: np.ndarray
     M3_samples: np.ndarray
+    data_M1: np.ndarray
+    data_M2: np.ndarray
+    data_M3: np.ndarray
+    t1_sparse: np.ndarray
+    t2_sparse: np.ndarray
+    t3_sparse: np.ndarray
+    idx1: np.ndarray
+    idx2: np.ndarray
+    idx3: np.ndarray
     theta_M1_mean: np.ndarray
     theta_M2_mean: np.ndarray
     theta_M3_mean: np.ndarray
@@ -431,7 +458,23 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     theta_final[10:14] = theta_M3_mean
 
     return HierarchicalResults(
-        M1_samples=samples_M1, M2_samples=samples_M2, M3_samples=samples_M3,
-        theta_M1_mean=theta_M1_mean, theta_M2_mean=theta_M2_mean, theta_M3_mean=theta_M3_mean,
-        theta_final=theta_final, tmcmc_M1=res_M1, tmcmc_M2=res_M2, tmcmc_M3=res_M3
+        M1_samples=samples_M1,
+        M2_samples=samples_M2,
+        M3_samples=samples_M3,
+        data_M1=data_M1,
+        data_M2=data_M2,
+        data_M3=data_M3,
+        t1_sparse=t1_sparse,
+        t2_sparse=t2_sparse,
+        t3_sparse=t3_sparse,
+        idx1=idx1,
+        idx2=idx2,
+        idx3=idx3,
+        theta_M1_mean=theta_M1_mean,
+        theta_M2_mean=theta_M2_mean,
+        theta_M3_mean=theta_M3_mean,
+        theta_final=theta_final,
+        tmcmc_M1=res_M1,
+        tmcmc_M2=res_M2,
+        tmcmc_M3=res_M3,
     )
