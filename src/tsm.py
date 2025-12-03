@@ -208,7 +208,7 @@ class BiofilmTSM:
 # ─────────────────────────────────────────────
 
 def log_likelihood_sparse(obs, obs_var, data, sigma_obs):
-    """Heteroscedastic Gaussian log-likelihood for sparse observations.
+    """Gaussian heteroscedastic log-likelihood for sparse observations.
 
     The total variance combines propagated state uncertainty ``obs_var``
     (from :class:`BiofilmTSM.solve_tsm`) with measurement noise
