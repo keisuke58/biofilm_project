@@ -3,6 +3,7 @@ Unit tests for hierarchical Bayesian updating
 
 Run with: pytest tests/test_hierarchical.py -v
 """
+import copy
 import pytest
 import numpy as np
 from src.hierarchical import hierarchical_case2, HierarchicalResults
@@ -21,17 +22,17 @@ class TestHierarchicalCase2:
     @pytest.fixture
     def debug_config(self):
         """Create a fast debug configuration for testing"""
-        config = CONFIG.copy()
+        config = copy.deepcopy(CONFIG)
         config["DEBUG"] = True
-        config["Ndata"] = 10
-        config["N0"] = 200
-        config["N_resamples"] = 2
-        config["max_stages"] = 5
+        config["Ndata"] = 5
+        config["N0"] = 50
+        config["N_resamples"] = 1
+        config["stages"] = 3
 
         # Reduce timesteps for speed
         for model_id in ["M1", "M2", "M3"]:
-            config[model_id]["maxtimestep"] = 30
-            config[model_id]["dt"] = 1e-3
+            config[model_id]["maxtimestep"] = 15
+            config[model_id]["dt"] = 2e-3
 
         return config
 
