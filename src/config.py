@@ -20,16 +20,25 @@ ENABLE_PLOTS = True
 def get_config(debug: bool):
     """
     Paper-accurate configuration from Table 3 (Case II)
+
+    Case II uses genuine 2-species submodels:
+    - M1: Species 1-2 only (coarse model)
+    - M2: Species 3-4 only (medium model)
+    - M3: All 4 species (fine model)
     """
     if debug:
         return {
             "M1": dict(dt=1e-5, maxtimestep=2500, c_const=100.0, alpha_const=100.0),
             "M2": dict(dt=1e-5, maxtimestep=5000, c_const=100.0, alpha_const=10.0),
             "M3": dict(dt=1e-4, maxtimestep=750,  c_const=25.0,  alpha_const=0.0),
-            # initial φ
-            "phi_init_M1": 0.2,
-            "phi_init_M2": 0.2,
-            "phi_init_M3": 0.02,
+            # initial φ (vector form for true 2-species submodels)
+            "phi_init_M1": [0.2, 0.2, 0.0, 0.0],  # Species 1-2 only
+            "phi_init_M2": [0.0, 0.0, 0.2, 0.2],  # Species 3-4 only
+            "phi_init_M3": 0.02,                   # All 4 species (scalar)
+            # Active species for true 2-species submodels
+            "active_species_M1": [0, 1],  # Species 1-2
+            "active_species_M2": [2, 3],  # Species 3-4
+            "active_species_M3": None,    # All species (or [0,1,2,3])
             # sparse data
             "Ndata": 20,
             # TMCMC
@@ -51,9 +60,14 @@ def get_config(debug: bool):
             "M1": dict(dt=1e-5, maxtimestep=2500, c_const=100.0, alpha_const=100.0),
             "M2": dict(dt=1e-5, maxtimestep=5000, c_const=100.0, alpha_const=10.0),
             "M3": dict(dt=1e-4, maxtimestep=750,  c_const=25.0,  alpha_const=0.0),
-            "phi_init_M1": 0.2,
-            "phi_init_M2": 0.2,
-            "phi_init_M3": 0.02,
+            # initial φ (vector form for true 2-species submodels)
+            "phi_init_M1": [0.2, 0.2, 0.0, 0.0],  # Species 1-2 only
+            "phi_init_M2": [0.0, 0.0, 0.2, 0.2],  # Species 3-4 only
+            "phi_init_M3": 0.02,                   # All 4 species (scalar)
+            # Active species for true 2-species submodels
+            "active_species_M1": [0, 1],  # Species 1-2
+            "active_species_M2": [2, 3],  # Species 3-4
+            "active_species_M3": None,    # All species (or [0,1,2,3])
             "Ndata": 20,
             "N0": 500,
             "Nposterior": 5000,
