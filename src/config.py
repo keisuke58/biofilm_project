@@ -1,8 +1,16 @@
 # src/config.py
+import os
 import numpy as np
 
+# Hierarchical calibration overview (M1/M2/M3 + validation)
+# - 14 total parameters with Uniform(0, 3) priors
+# - cov_rel = sigma_obs = 0.005 (0.5% CoV)
+# - Sparse data: Ndata = 20
+# - M1 & M2 are two-species submodels; M3 activates all four species
+
 # DEBUG / プロット
-DEBUG =  False    # Paper-accurate: False
+# Allow overriding via environment variable (DEBUG=true/false)
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ENABLE_PLOTS = True
 
 # ─────────────────────────────────────────────

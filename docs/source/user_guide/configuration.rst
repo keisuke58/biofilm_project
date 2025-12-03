@@ -4,6 +4,50 @@ Configuration
 
 This guide explains all configuration options available in the Biofilm Multi-Scale Parameter Estimation framework.
 
+Hierarchical Calibration Overview
+=================================
+
+The calibration pipeline estimates **14 parameters** across the three forward models (``M1``, ``M2``, ``M3``) plus a validation-only pass. All unknown parameters use uninformative :math:`\text{Uniform}(0, 3)` priors and the aleatory uncertainty is represented with a **0.5% Coefficient of Variation (CoV)** (``cov_rel = 0.005``). Each stage fits against **20 sparse data points** (:math:`N_{\text{data}} = 20`).
+
+Stage 1: Submodel :math:`\mathcal{M}^1` (Species 1 & 2)
+---------------------------------------------------------
+
+* **Goal:** Infer 5 parameters :math:`\theta^{(1)} = [a_{11}, a_{12}, a_{22}, b_1, b_2]` (species 1–2 self/cross growth and antibiotic sensitivity).
+* **Fixed values:** :math:`\eta_1 = \eta_2 = 1.0`.
+* **Initial conditions:** :math:`\phi_1 = \phi_2 = 0.2` (species 3 & 4 absent).
+* **Environment:** Nutrients :math:`c^* = 100`; antibiotics :math:`\alpha^* = 100`.
+* **Simulation:** :math:`N = 2500` time steps with :math:`\Delta t = 10^{-5}` s.
+* **Outcome:** MAP estimates of :math:`\theta^{(1)}` are fixed for later stages.
+
+Stage 2: Submodel :math:`\mathcal{M}^2` (Species 3 & 4)
+---------------------------------------------------------
+
+* **Goal:** Infer 5 parameters :math:`\theta^{(2)} = [a_{33}, a_{34}, a_{44}, b_3, b_4]` for species 3–4.
+* **Fixed values:** :math:`\eta_3 = \eta_4 = 1.0`.
+* **Initial conditions:** :math:`\phi_3 = \phi_4 = 0.2` (species 1 & 2 absent).
+* **Environment:** Nutrients :math:`c^* = 100`; antibiotics reduced to :math:`\alpha^* = 10` to avoid non-informative zero concentrations.
+* **Simulation:** :math:`N = 5000` time steps with :math:`\Delta t = 10^{-5}` s (longer run for slower growth).
+* **Outcome:** MAP estimates of :math:`\theta^{(2)}` are fixed for Stage 3.
+
+Stage 3: Full Model :math:`\mathcal{M}^3` (Interaction Learning)
+-----------------------------------------------------------------
+
+* **Goal:** Infer the remaining 4 cross-interaction parameters :math:`\theta^{(3)} = [a_{13}, a_{14}, a_{23}, a_{24}]`.
+* **Constraints:** The 10 parameters from :math:`\theta^{(1)}` and :math:`\theta^{(2)}` remain fixed at their MAP values.
+* **Initial conditions:** :math:`\phi_1 = \phi_2 = \phi_3 = \phi_4 = 0.02`.
+* **Environment:** Nutrients :math:`c^* = 25`; antibiotics off (:math:`\alpha^* = 0`).
+* **Simulation:** :math:`N = 750` time steps with :math:`\Delta t = 10^{-4}` s.
+
+Stage 4: Validation Model :math:`\mathcal{M}_{val}^3`
+------------------------------------------------------
+
+* **Goal:** No additional inference; validates predictions under a dynamic antibiotic profile using the 14 MAP parameters from earlier stages.
+* **Initial conditions:** :math:`\phi_1 = \phi_2 = \phi_3 = \phi_4 = 0.02`.
+* **Environment:** Nutrients :math:`c^* = 25`; antibiotics switch from :math:`\alpha^* = 0` for :math:`t \le 500` to :math:`\alpha^* = 50` afterward.
+* **Simulation:** :math:`N = 1500` time steps with :math:`\Delta t = 10^{-4}` s.
+
+``M1`` and ``M2`` are strictly two-species submodels; ``M3`` activates all four species while keeping the earlier parameters fixed.
+
 Configuration File
 ==================
 
