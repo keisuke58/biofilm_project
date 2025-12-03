@@ -208,12 +208,32 @@ class BiofilmTSM:
 # ─────────────────────────────────────────────
 
 def log_likelihood_sparse(obs, obs_var, data, sigma_obs):
-    D = np.asarray(data, dtype=float).ravel()
-    m = np.asarray(obs, dtype=float).ravel()
-    v = np.asarray(obs_var, dtype=float).ravel() + sigma_obs**2
+    """Heteroscedastic Gaussian log-likelihood for sparse observations.
 
-    if D.shape != m.shape:
-        raise ValueError(f"shape mismatch: data={D.shape}, mu={m.shape}")
+    The total variance combines propagated state uncertainty ``obs_var``
+    (from :class:`BiofilmTSM.solve_tsm`) with measurement noise
+    ``sigma_obs``. ``sigma_obs`` may be a scalar or an array broadcastable
+    to ``obs`` so each observation can be weighted by its own variance.
+    """
+
+    obs_arr = np.asarray(obs, dtype=float)
+    data_arr = np.asarray(data, dtype=float)
+    prop_var = np.asarray(obs_var, dtype=float)
+
+    if data_arr.shape != obs_arr.shape:
+        raise ValueError(f"shape mismatch: data={data_arr.shape}, mu={obs_arr.shape}")
+    if prop_var.shape != obs_arr.shape:
+        raise ValueError(f"shape mismatch: obs_var={prop_var.shape}, obs={obs_arr.shape}")
+
+    meas_var = np.asarray(sigma_obs, dtype=float)
+    try:
+        total_var = prop_var + np.square(np.broadcast_to(meas_var, obs_arr.shape))
+    except ValueError:
+        raise ValueError(f"sigma_obs with shape {meas_var.shape} not broadcastable to {obs_arr.shape}")
+
+    v = total_var.ravel()
+    D = data_arr.ravel()
+    m = obs_arr.ravel()
 
     bad = (~np.isfinite(v)) | (v <= 0)
     if np.any(bad):
