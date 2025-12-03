@@ -1,8 +1,10 @@
 # src/config.py
+import os
 import numpy as np
 
 # DEBUG / プロット
-DEBUG =  False    # Paper-accurate: False
+# Allow overriding via environment variable (DEBUG=true/false)
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ENABLE_PLOTS = True
 
 # ─────────────────────────────────────────────

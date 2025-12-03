@@ -14,12 +14,19 @@ on:
           - simulation
           - profiling
           - all
+      debug_mode:
+        description: 'Run in DEBUG mode (fast)'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   quick-analysis:
     name: Quick ${{ inputs.analysis_type }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DEBUG: ${{ inputs.debug_mode }}
 
     steps:
       - name: Checkout
@@ -34,13 +41,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Prepare results directory
+        run: mkdir -p results
+
       - name: Run Calibration
         if: inputs.analysis_type == 'calibration' || inputs.analysis_type == 'all'
         run: |
           echo "Running quick calibration..."
           python main_calibration.py
-        env:
-          DEBUG: 'true'
 
       - name: Run Sensitivity Analysis
         if: inputs.analysis_type == 'sensitivity' || inputs.analysis_type == 'all'
@@ -69,9 +77,17 @@ jobs:
           echo "Running profiling..."
           python tools/profile_performance.py --component solver
 
+      - name: Ensure results are available
+        run: |
+          mkdir -p results
+          if [ -z "$(ls -A results)" ]; then
+            echo "No outputs were generated for ${{ inputs.analysis_type }}" > results/README.txt
+          fi
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
           name: quick-analysis-${{ inputs.analysis_type }}
           path: results/
           retention-days: 7
+          if-no-files-found: error
