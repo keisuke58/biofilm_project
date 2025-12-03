@@ -113,6 +113,28 @@ except ImportError:
     print("⚠ Numba not available: using pure NumPy (slower)")
 
 
+def _normalize_phi_init(phi_init_cfg, species_count: int, active_indices=None):
+    """Return a species_count-length φ₀ vector, handling scalar inputs gracefully."""
+
+    active = list(active_indices) if active_indices is not None else None
+
+    arr = np.asarray(phi_init_cfg, dtype=float)
+    if arr.ndim == 0:  # scalar -> broadcast to the active subset (or species_count)
+        target_len = len(active) if active is not None else species_count
+        arr = np.full(target_len, float(arr))
+
+    if active is not None:
+        max_idx = max(active)
+        if arr.size <= max_idx:
+            arr = np.pad(arr, (0, max_idx + 1 - arr.size))
+        arr = np.array([arr[i] for i in active])
+        return arr
+
+    if arr.size < species_count:
+        arr = np.pad(arr, (0, species_count - arr.size))
+    return arr[:species_count]
+
+
 def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     """
     Hierarchical Bayesian parameter estimation for biofilm models.
@@ -269,18 +291,24 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
 
     # M1 solver: TRUE 2-species submodel (species 1-2 only)
     solver_M1 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M1"],  # [0.2, 0.2, 0.0, 0.0]
-        active_species=config.get("active_species_M1"),  # [0, 1]
-        use_numba=HAS_NUMBA,
+        phi_init=_normalize_phi_init(
+            config["phi_init_M1"], 2, config.get("active_species_M1", [0, 1])
+        ),
+        species_count=2,
+        theta_indices=[0, 1, 2, 3, 4],
+        use_numba=False,
         **config["M1"]
     )
     t1, g1 = solver_M1.run_deterministic(theta_true, show_progress=True)
 
     # M2 solver: TRUE 2-species submodel (species 3-4 only)
     solver_M2 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M2"],  # [0.0, 0.0, 0.2, 0.2]
-        active_species=config.get("active_species_M2"),  # [2, 3]
-        use_numba=HAS_NUMBA,
+        phi_init=_normalize_phi_init(
+            config["phi_init_M2"], 2, config.get("active_species_M2", [2, 3])
+        ),
+        species_count=2,
+        theta_indices=[5, 6, 7, 8, 9],
+        use_numba=False,
         **config["M2"]
     )
     t2, g2 = solver_M2.run_deterministic(theta_true, show_progress=True)
@@ -295,8 +323,8 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     t3, g3 = solver_M3.run_deterministic(theta_true, show_progress=True)
     
     # Compute observables (phi_bar = phi * psi)
-    obs1_full = np.stack([g1[:, 0]*g1[:, 5], g1[:, 1]*g1[:, 6]], axis=1)
-    obs2_full = np.stack([g2[:, 2]*g2[:, 7], g2[:, 3]*g2[:, 8]], axis=1)
+    obs1_full = np.stack([g1[:, 0]*g1[:, 3], g1[:, 1]*g1[:, 4]], axis=1)
+    obs2_full = np.stack([g2[:, 0]*g2[:, 3], g2[:, 1]*g2[:, 4]], axis=1)
     obs3_full = np.stack([g3[:, i]*g3[:, 5+i] for i in range(4)], axis=1)
     
     # SELECT SPARSE DATA POINTS (CRITICAL!)
@@ -325,8 +353,12 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     print(f"  Active species: {config.get('active_species_M1', 'all')}")
     print("="*72)
 
-    tsm_M1 = BiofilmTSM(solver_M1, cov_rel=config["cov_rel"],
-                        active_theta_indices=config["theta_active_indices_M1"])
+    tsm_M1 = BiofilmTSM(
+        solver_M1,
+        cov_rel=config["cov_rel"],
+        active_theta_indices=None,
+        theta_indices=[0, 1, 2, 3, 4],
+    )
     
     theta_prior_center = theta_true.copy()
     
@@ -336,9 +368,15 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
         try:
             tsm_res = tsm_M1.solve_tsm(theta_full)
             # Extract at SPARSE data indices
-            phi, psi = tsm_res.mu[idx1, 0:4], tsm_res.mu[idx1, 5:9]
+            phi, psi = (
+                tsm_res.mu[idx1, 0:solver_M1.n],
+                tsm_res.mu[idx1, solver_M1.n + 1:solver_M1.n + 1 + solver_M1.n],
+            )
             obs = np.stack([phi[:, 0]*psi[:, 0], phi[:, 1]*psi[:, 1]], axis=1)
-            var_phi, var_psi = tsm_res.sigma2[idx1, 0:4], tsm_res.sigma2[idx1, 5:9]
+            var_phi, var_psi = (
+                tsm_res.sigma2[idx1, 0:solver_M1.n],
+                tsm_res.sigma2[idx1, solver_M1.n + 1:solver_M1.n + 1 + solver_M1.n],
+            )
             obs_var = np.stack([
                 phi[:, 0]**2 * var_psi[:, 0] + psi[:, 0]**2 * var_phi[:, 0],
                 phi[:, 1]**2 * var_psi[:, 1] + psi[:, 1]**2 * var_phi[:, 1],
@@ -386,20 +424,30 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     print(f"  Active species: {config.get('active_species_M2', 'all')}")
     print("="*72)
 
-    tsm_M2 = BiofilmTSM(solver_M2, cov_rel=config["cov_rel"],
-                        active_theta_indices=config["theta_active_indices_M2"])
+    tsm_M2 = BiofilmTSM(
+        solver_M2,
+        cov_rel=config["cov_rel"],
+        active_theta_indices=None,
+        theta_indices=[5, 6, 7, 8, 9],
+    )
     
     def logL_M2(theta_M2):
         theta_full = theta_stage2_center.copy()
         theta_full[5:10] = theta_M2
         try:
             tsm_res = tsm_M2.solve_tsm(theta_full)
-            phi, psi = tsm_res.mu[idx2, 0:4], tsm_res.mu[idx2, 5:9]
-            obs = np.stack([phi[:, 2]*psi[:, 2], phi[:, 3]*psi[:, 3]], axis=1)
-            var_phi, var_psi = tsm_res.sigma2[idx2, 0:4], tsm_res.sigma2[idx2, 5:9]
+            phi, psi = (
+                tsm_res.mu[idx2, 0:solver_M2.n],
+                tsm_res.mu[idx2, solver_M2.n + 1:solver_M2.n + 1 + solver_M2.n],
+            )
+            obs = np.stack([phi[:, 0]*psi[:, 0], phi[:, 1]*psi[:, 1]], axis=1)
+            var_phi, var_psi = (
+                tsm_res.sigma2[idx2, 0:solver_M2.n],
+                tsm_res.sigma2[idx2, solver_M2.n + 1:solver_M2.n + 1 + solver_M2.n],
+            )
             obs_var = np.stack([
-                phi[:, 2]**2 * var_psi[:, 2] + psi[:, 2]**2 * var_phi[:, 2],
-                phi[:, 3]**2 * var_psi[:, 3] + psi[:, 3]**2 * var_phi[:, 3],
+                phi[:, 0]**2 * var_psi[:, 0] + psi[:, 0]**2 * var_phi[:, 0],
+                phi[:, 1]**2 * var_psi[:, 1] + psi[:, 1]**2 * var_phi[:, 1],
             ], axis=1)
             return log_likelihood_sparse(obs, obs_var, data_M2, sigma_obs)
         except (RuntimeError, np.linalg.LinAlgError, ValueError) as e:

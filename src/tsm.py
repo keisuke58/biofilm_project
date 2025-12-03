@@ -26,17 +26,50 @@ class BiofilmTSM:
                    "a13","a14","a23","a24"]
 
     def __init__(self, solver, cov_rel=0.005,
-                 active_theta_indices=None, use_analytical=True):
+                 active_theta_indices=None, use_analytical=True,
+                 theta_indices=None):
         self.solver = solver
         self.cov_rel = cov_rel
-        self.active_idx = np.arange(14) if active_theta_indices is None else np.array(active_theta_indices)
-        self.use_analytical = use_analytical and HAS_NUMBA
+        self.theta_indices = None if theta_indices is None else np.array(theta_indices, dtype=int)
+
+        if self.theta_indices is None:
+            self.theta_names = self.THETA_NAMES
+        else:
+            self.theta_names = [self.THETA_NAMES[i] for i in self.theta_indices]
+
+        if active_theta_indices is None:
+            self.active_idx = np.arange(len(self.theta_names))
+        else:
+            self.active_idx = np.array(active_theta_indices)
+
+        # Analytical sensitivity is only available for the original 4-species
+        # numba kernels.
+        self.use_analytical = use_analytical and HAS_NUMBA and self.solver.n == 4
 
     # dQ/dθ（analytical）: biofilm_ultimate の _dG_dtheta_analytical / _dQ_dtheta_numpy をここに集約
     def _dQ_dtheta_numpy(self, phi_new, psi_new, c_val, alpha_val, Eta_vec, CapitalPhi, theta_idx):
         """NumPy fallback for analytical sensitivity"""
-        dQ = np.zeros(10)
-        
+        n = self.solver.n
+        dQ = np.zeros(2 * n + 2)
+
+        if n == 2:
+            if theta_idx == 0:  # a11
+                dQ[0] = -(c_val / Eta_vec[0]) * psi_new[0] * CapitalPhi[0]
+                dQ[3] = -(c_val / Eta_vec[0]) * phi_new[0] * CapitalPhi[0]
+            elif theta_idx == 1:  # a12
+                dQ[0] = -(c_val / Eta_vec[0]) * psi_new[0] * CapitalPhi[1]
+                dQ[1] = -(c_val / Eta_vec[1]) * psi_new[1] * CapitalPhi[0]
+                dQ[3] = -(c_val / Eta_vec[0]) * phi_new[0] * CapitalPhi[1]
+                dQ[4] = -(c_val / Eta_vec[1]) * phi_new[1] * CapitalPhi[0]
+            elif theta_idx == 2:  # a22
+                dQ[1] = -(c_val / Eta_vec[1]) * psi_new[1] * CapitalPhi[1]
+                dQ[4] = -(c_val / Eta_vec[1]) * phi_new[1] * CapitalPhi[1]
+            elif theta_idx == 3:  # b1
+                dQ[3] = (alpha_val / Eta_vec[0]) * psi_new[0]
+            elif theta_idx == 4:  # b2
+                dQ[4] = (alpha_val / Eta_vec[1]) * psi_new[1]
+            return dQ
+
         # Parameter index mapping (same logic as Numba version)
         if theta_idx == 0:  # a11
             dQ[0] = -(c_val / Eta_vec[0]) * psi_new[0] * CapitalPhi[0]
@@ -88,7 +121,7 @@ class BiofilmTSM:
             dQ[3] = -(c_val / Eta_vec[3]) * psi_new[3] * CapitalPhi[1]
             dQ[6] = -(c_val / Eta_vec[1]) * phi_new[1] * CapitalPhi[3]
             dQ[8] = -(c_val / Eta_vec[3]) * phi_new[3] * CapitalPhi[1]
-        
+
         return dQ
 
     def _dG_dtheta_analytical(self, g_new, theta):
@@ -122,7 +155,7 @@ class BiofilmTSM:
             A_m, b_m = self.solver.theta_to_matrices(th_minus)
             Q_p = self.solver.compute_Q_vector(g_new, g_old, t, dt, A_p, b_p)
             Q_m = self.solver.compute_Q_vector(g_new, g_old, t, dt, A_m, b_m)
-            dG_dict[self.THETA_NAMES[idx]] = (Q_p - Q_m) / (2.0 * eps_theta)
+            dG_dict[self.theta_names[idx]] = (Q_p - Q_m) / (2.0 * eps_theta)
         return dG_dict
 
     # メインの solve_tsm: re_numba / biofilm_ultimate の BiofilmTSM.solve_tsm をそのまま移植
@@ -142,15 +175,16 @@ class BiofilmTSM:
         σ² = Σ_k (x1_k)² Var(θ_k)  - propagated variance
         """
         theta = np.asarray(theta, dtype=float)
+        theta_effective = theta if self.theta_indices is None else theta[self.theta_indices]
         A, b_diag = self.solver.theta_to_matrices(theta)
         dt, maxtimestep, eps = self.solver.dt, self.solver.maxtimestep, self.solver.eps
 
-        # g_prev = np.array([0.02, 0.02, 0.02, 0.02, 0.92, 0.999, 0.999, 0.999, 0.999, 1e-6])
         g_prev = self.solver.get_initial_state()
 
         t_list, x0_list = [0.0], [g_prev.copy()]
         theta_dim = len(self.active_idx)
-        x1_list = [np.zeros((10, theta_dim))]
+        state_dim = g_prev.size
+        x1_list = [np.zeros((state_dim, theta_dim))]
 
         for step in range(maxtimestep):
             tt = (step + 1) * dt
@@ -169,14 +203,14 @@ class BiofilmTSM:
 
             # Compute sensitivity ∂g/∂θ
             if self.use_analytical:
-                dG_dict = self._dG_dtheta_analytical(g_new, theta)
+                dG_dict = self._dG_dtheta_analytical(g_new, theta_effective)
             else:
-                dG_dict = self._dG_dtheta_numeric(g_new, g_prev, tt, dt, theta)
+                dG_dict = self._dG_dtheta_numeric(g_new, g_prev, tt, dt, theta_effective)
             
             J = self.solver.compute_Jacobian_matrix(g_new, g_prev, tt, dt, A, b_diag)
-            x1_t = np.zeros((10, theta_dim))
+            x1_t = np.zeros((state_dim, theta_dim))
             for k, idx in enumerate(self.active_idx):
-                x1_t[:, k] = np.linalg.solve(J, -dG_dict[self.THETA_NAMES[idx]])
+                x1_t[:, k] = np.linalg.solve(J, -dG_dict[self.theta_names[idx]])
 
             g_prev = g_new.copy()
             t_list.append(tt)
@@ -188,7 +222,7 @@ class BiofilmTSM:
         x1 = np.stack(x1_list, axis=0)
 
         # Compute variance propagation
-        var_theta_full = (self.cov_rel * theta)**2
+        var_theta_full = (self.cov_rel * theta_effective)**2
         var_theta_active = var_theta_full[self.active_idx]
 
         mu = x0.copy()
