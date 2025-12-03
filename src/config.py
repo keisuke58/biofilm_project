@@ -27,9 +27,9 @@ def get_config(debug: bool):
             # sparse data
             "Ndata": 20,
             # TMCMC
-            "N0": 500,
-            "Nposterior": 5000,
-            "stages": 15,
+            "N0": 10,
+            "Nposterior": 50,
+            "stages": 10,
             "target_ess_ratio": 0.8,
             # TSM
             "theta_active_indices_M1": [0, 1, 2, 3, 4],
