@@ -1,0 +1,7 @@
+# Sphinx build outputs
+build/
+_build/
+
+# Sphinx auto-generated files
+source/modules.rst
+source/**/modules.rst
