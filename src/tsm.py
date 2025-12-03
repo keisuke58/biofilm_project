@@ -208,17 +208,102 @@ class BiofilmTSM:
 # ─────────────────────────────────────────────
 
 def log_likelihood_sparse(obs, obs_var, data, sigma_obs):
-    D = np.asarray(data, dtype=float).ravel()
-    m = np.asarray(obs, dtype=float).ravel()
-    v = np.asarray(obs_var, dtype=float).ravel() + sigma_obs**2
+    """Gaussian heteroscedastic log-likelihood for sparse observations.
 
-    if D.shape != m.shape:
-        raise ValueError(f"shape mismatch: data={D.shape}, mu={m.shape}")
+    The total variance combines propagated state uncertainty ``obs_var``
+    (from :class:`BiofilmTSM.solve_tsm`) with measurement noise
+    ``sigma_obs``. ``sigma_obs`` may be a scalar or an array broadcastable
+    to ``obs`` so each observation can be weighted by its own variance.
+    """
+
+    obs_arr = np.asarray(obs, dtype=float)
+    data_arr = np.asarray(data, dtype=float)
+    prop_var = np.asarray(obs_var, dtype=float)
+
+    if data_arr.shape != obs_arr.shape:
+        raise ValueError(f"shape mismatch: data={data_arr.shape}, mu={obs_arr.shape}")
+    if prop_var.shape != obs_arr.shape:
+        raise ValueError(f"shape mismatch: obs_var={prop_var.shape}, obs={obs_arr.shape}")
+
+    meas_var = np.asarray(sigma_obs, dtype=float)
+    try:
+        total_var = prop_var + np.square(np.broadcast_to(meas_var, obs_arr.shape))
+    except ValueError:
+        raise ValueError(f"sigma_obs with shape {meas_var.shape} not broadcastable to {obs_arr.shape}")
+
+    v = total_var.ravel()
+    D = data_arr.ravel()
+    m = obs_arr.ravel()
 
     bad = (~np.isfinite(v)) | (v <= 0)
     if np.any(bad):
         return -1e20
 
     diff = D - m
-    ll = -0.5 * np.sum(np.log(2 * np.pi * v)) - 0.5 * np.sum(diff*diff / v)
+
+    ll = -0.5 * np.sum(np.log(2 * np.pi * v)) - 0.5 * np.sum(diff * diff / v)
+
     return max(ll, -1e20) if np.isfinite(ll) else -1e20
+
+
+def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analytical=True):
+    """
+    Compute the TSM sensitivity matrix for a given parameter vector.
+
+    Parameters
+    ----------
+    theta : array_like
+        Parameter vector for the active subset of parameters.
+    config : dict
+        Configuration dictionary containing solver settings such as
+        ``dt``, ``maxtimestep``, ``c_const``, and ``alpha_const``.
+    active_theta_indices : list[int], optional
+        Indices (0-based) of the active parameters within the full 14-D
+        parameter vector. If omitted, the first ``len(theta)`` entries
+        are used.
+    use_analytical : bool
+        Whether to use analytical sensitivity (Numba-backed) when available.
+
+    Returns
+    -------
+    np.ndarray
+        Sensitivity matrix of shape ``(n_outputs, n_parameters)`` where
+        ``n_outputs`` corresponds to the flattened state trajectory over
+        time and species.
+    """
+
+    from .solver_newton import BiofilmNewtonSolver
+
+    theta = np.asarray(theta, dtype=float)
+    active_idx = (list(range(len(theta))) if active_theta_indices is None
+                  else list(active_theta_indices))
+
+    # Build full 14-dimensional theta vector
+    theta_full = np.zeros(14, dtype=float)
+    theta_full[active_idx] = theta
+
+    # Instantiate solver with sensible defaults pulled from config
+    solver = BiofilmNewtonSolver(
+        dt=config.get("dt", 1e-5),
+        maxtimestep=config.get("maxtimestep", 2500),
+        eps=config.get("eps", 1e-6),
+        Kp1=config.get("Kp1", 1e-4),
+        eta_vec=config.get("eta_vec"),
+        c_const=config.get("c_const", 100.0),
+        alpha_const=config.get("alpha_const", 100.0),
+        phi_init=config.get("phi_init", config.get("phi_init_M1", 0.02)),
+        use_numba=config.get("use_numba", True),
+    )
+
+    tsm = BiofilmTSM(
+        solver,
+        cov_rel=config.get("cov_rel", 0.005),
+        active_theta_indices=active_idx,
+        use_analytical=use_analytical,
+    )
+
+    result = tsm.solve_tsm(theta_full)
+
+    # Flatten (time, state) dimensions to align with finite-difference checks
+    n_outputs = result.x1.shape[0] * result.x1.shape[1]
+    return result.x1.reshape(n_outputs, result.x1.shape[2])
