@@ -240,9 +240,7 @@ def log_likelihood_sparse(obs, obs_var, data, sigma_obs):
         return -1e20
 
     diff = D - m
-
-    ll = -0.5 * np.sum(np.log(2 * np.pi * v)) - 0.5 * np.sum(diff * diff / v)
-
+    ll = -0.5 * np.sum(np.log(2 * np.pi * v)) - 0.5 * np.sum(diff*diff / v)
     return max(ll, -1e20) if np.isfinite(ll) else -1e20
 
 
