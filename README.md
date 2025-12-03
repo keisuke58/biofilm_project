@@ -351,17 +351,17 @@ Sequential estimation strategy:
 Edit `src/config.py` to modify settings:
 
 ```python
-# Debug mode (fast, low accuracy)
-DEBUG = True
-
 # Production mode (slow, high accuracy)
-DEBUG = False
+DEBUG = False  # Default: Case II paper-accurate settings
 
-# Model configurations
+# Debug mode (fast, low accuracy)
+# DEBUG = True  # Optional: quicker runs with reduced timesteps
+
+# Model configurations (default production settings)
 CONFIG = {
-    "M1": dict(dt=1e-4, maxtimestep=80, c_const=100.0, alpha_const=100.0),
-    "M2": dict(dt=1e-4, maxtimestep=100, c_const=100.0, alpha_const=10.0),
-    "M3": dict(dt=1e-4, maxtimestep=60, c_const=25.0, alpha_const=0.0),
+    "M1": dict(dt=1e-5, maxtimestep=2500, c_const=100.0, alpha_const=100.0),
+    "M2": dict(dt=1e-5, maxtimestep=5000, c_const=100.0, alpha_const=10.0),
+    "M3": dict(dt=1e-4, maxtimestep=750, c_const=25.0, alpha_const=0.0),
 
     # TMCMC settings
     "N0": 500,              # Initial samples
