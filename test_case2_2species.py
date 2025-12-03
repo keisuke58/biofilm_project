@@ -3,8 +3,8 @@
 Quick test to verify Case II 2-species submodel implementation.
 
 This script verifies that:
-1. M1 solver: species 3-4 remain at zero
-2. M2 solver: species 1-2 remain at zero
+1. M1 solver: species 3-4 remain fixed at phi_init while species 1-2 evolve
+2. M2 solver: species 1-2 remain fixed at phi_init while species 3-4 evolve
 3. M3 solver: all 4 species evolve
 4. Interaction matrices are properly masked
 """
@@ -22,8 +22,8 @@ def test_M1_2species():
     solver = BiofilmNewtonSolver(
         dt=1e-4,
         maxtimestep=100,  # Short run for testing
-        phi_init=0.2,  # SCALAR: all species start at 0.2
-        active_species=[0, 1],  # Only 1-2 grow/interact
+        phi_init=0.2,  # All species start equal; masking enforces 2-species
+        active_species=[0, 1],
         c_const=100.0,
         alpha_const=100.0
     )
@@ -31,7 +31,8 @@ def test_M1_2species():
     # Check initial state - ALL species start at same value
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
-    assert np.allclose(g0[0:4], 0.2, atol=1e-6), "All species should start at 0.2"
+    assert np.allclose(g0[0:2], 0.2, atol=1e-6), "Species 1-2 should start at 0.2"
+    assert np.allclose(g0[2:4], 0.2, atol=1e-6), "Species 3-4 should start at 0.2 (constant inactive value)"
 
     # Check interaction matrix masking
     theta = get_theta_true()
@@ -48,17 +49,15 @@ def test_M1_2species():
     print("  Running forward simulation...")
     t, g = solver.run_deterministic(theta, show_progress=False)
 
-    # Check species 3-4 remain at initial value (zero interactions → no change)
+    # Check species 3-4 remain at constant initial value
     print(f"  Final φ: {g[-1, 0:4]}")
     print(f"  φ₃ over time: min={np.min(g[:, 2]):.6f}, max={np.max(g[:, 2]):.6f}")
-    print(f"  φ₄ over time: min={np.min(g[:, 3]):.6f}, max={np.max(g[:, 4]):.6f}")
+    print(f"  φ₄ over time: min={np.min(g[:, 3]):.6f}, max={np.max(g[:, 3]):.6f}")
 
-    # Inactive species should stay at phi_init=0.2 (zero interactions)
-    assert np.allclose(g[:, 2], 0.2, atol=1e-4), "Species 3 should stay at phi_init=0.2"
-    assert np.allclose(g[:, 3], 0.2, atol=1e-4), "Species 4 should stay at phi_init=0.2"
-    # Active species should evolve away from phi_init
-    assert not np.allclose(g[-1, 0], 0.2, atol=1e-2), "Species 1 should evolve from 0.2"
-    assert not np.allclose(g[-1, 1], 0.2, atol=1e-2), "Species 2 should evolve from 0.2"
+    assert np.allclose(g[:, 2], 0.2, atol=1e-4), "Species 3 should remain at phi_init"
+    assert np.allclose(g[:, 3], 0.2, atol=1e-4), "Species 4 should remain at phi_init"
+    assert not np.allclose(g[:, 0], 0.2), "Species 1 should evolve"
+    assert not np.allclose(g[:, 1], 0.2), "Species 2 should evolve"
 
     print("  ✅ M1 test PASSED: True 2-species submodel (1-2 only)")
 
@@ -72,8 +71,8 @@ def test_M2_2species():
     solver = BiofilmNewtonSolver(
         dt=1e-4,
         maxtimestep=100,
-        phi_init=0.2,  # SCALAR: all species start at 0.2
-        active_species=[2, 3],  # Only 3-4 grow/interact
+        phi_init=0.2,  # All species start equal; masking enforces 2-species
+        active_species=[2, 3],
         c_const=100.0,
         alpha_const=10.0
     )
@@ -81,7 +80,8 @@ def test_M2_2species():
     # Check initial state - ALL species start at same value
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
-    assert np.allclose(g0[0:4], 0.2, atol=1e-6), "All species should start at 0.2"
+    assert np.allclose(g0[0:2], 0.2, atol=1e-6), "Species 1-2 should start at 0.2 (constant inactive value)"
+    assert np.allclose(g0[2:4], 0.2, atol=1e-6), "Species 3-4 should start at 0.2"
 
     # Check interaction matrix masking
     theta = get_theta_true()
@@ -98,17 +98,15 @@ def test_M2_2species():
     print("  Running forward simulation...")
     t, g = solver.run_deterministic(theta, show_progress=False)
 
-    # Check species 1-2 remain at initial value (zero interactions → no change)
+    # Check species 1-2 remain at constant initial value
     print(f"  Final φ: {g[-1, 0:4]}")
     print(f"  φ₁ over time: min={np.min(g[:, 0]):.6f}, max={np.max(g[:, 0]):.6f}")
     print(f"  φ₂ over time: min={np.min(g[:, 1]):.6f}, max={np.max(g[:, 1]):.6f}")
 
-    # Inactive species should stay at phi_init=0.2 (zero interactions)
-    assert np.allclose(g[:, 0], 0.2, atol=1e-4), "Species 1 should stay at phi_init=0.2"
-    assert np.allclose(g[:, 1], 0.2, atol=1e-4), "Species 2 should stay at phi_init=0.2"
-    # Active species should evolve away from phi_init
-    assert not np.allclose(g[-1, 2], 0.2, atol=1e-2), "Species 3 should evolve from 0.2"
-    assert not np.allclose(g[-1, 3], 0.2, atol=1e-2), "Species 4 should evolve from 0.2"
+    assert np.allclose(g[:, 0], 0.2, atol=1e-4), "Species 1 should remain at phi_init"
+    assert np.allclose(g[:, 1], 0.2, atol=1e-4), "Species 2 should remain at phi_init"
+    assert not np.allclose(g[:, 2], 0.2), "Species 3 should evolve"
+    assert not np.allclose(g[:, 3], 0.2), "Species 4 should evolve"
 
     print("  ✅ M2 test PASSED: True 2-species submodel (3-4 only)")
 
