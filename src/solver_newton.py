@@ -100,8 +100,17 @@ class BiofilmNewtonSolver:
         - M1: phi_init=[0.2, 0.2, 0.0, 0.0] → only species 1-2 are present
         - M2: phi_init=[0.0, 0.0, 0.2, 0.2] → only species 3-4 are present
         - M3: phi_init=[0.02, 0.02, 0.02, 0.02] → all 4 species present
+
+        Note: To avoid division by zero in PDE terms (phi^3 in denominator),
+        we use a small epsilon (1e-10) instead of exactly 0 for inactive species.
         """
         phi_vec = self.phi_init.copy()  # Now a vector
+
+        # Replace exact zeros with small epsilon to avoid division by zero
+        # This is numerically safe and species with zero interactions stay ~epsilon
+        eps_phi = 1e-10
+        phi_vec = np.where(phi_vec < eps_phi, eps_phi, phi_vec)
+
         phi0 = 1.0 - np.sum(phi_vec)
         psi_vec = np.array([0.999] * 4)
         gamma = 1e-6

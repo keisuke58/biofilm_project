@@ -32,7 +32,8 @@ def test_M1_2species():
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
     assert np.allclose(g0[0:2], 0.2, atol=1e-6), "Species 1-2 should start at 0.2"
-    assert np.allclose(g0[2:4], 0.0, atol=1e-6), "Species 3-4 should start at 0"
+    # Species 3-4 use epsilon (1e-10) to avoid division by zero
+    assert g0[2] < 1e-8 and g0[3] < 1e-8, "Species 3-4 should start near 0 (epsilon)"
 
     # Check interaction matrix masking
     theta = get_theta_true()
@@ -49,13 +50,14 @@ def test_M1_2species():
     print("  Running forward simulation...")
     t, g = solver.run_deterministic(theta, show_progress=False)
 
-    # Check species 3-4 remain at zero
+    # Check species 3-4 remain near zero (with zero interactions they stay ~epsilon)
     print(f"  Final φ: {g[-1, 0:4]}")
     print(f"  Max |φ₃| over time: {np.max(np.abs(g[:, 2]))}")
     print(f"  Max |φ₄| over time: {np.max(np.abs(g[:, 3]))}")
 
-    assert np.allclose(g[:, 2], 0.0, atol=1e-5), "Species 3 should remain at zero"
-    assert np.allclose(g[:, 3], 0.0, atol=1e-5), "Species 4 should remain at zero"
+    # Inactive species should stay very small (near epsilon ~1e-10)
+    assert np.max(g[:, 2]) < 1e-7, "Species 3 should remain near zero"
+    assert np.max(g[:, 3]) < 1e-7, "Species 4 should remain near zero"
     assert not np.allclose(g[:, 0], 0.2), "Species 1 should evolve"
     assert not np.allclose(g[:, 1], 0.2), "Species 2 should evolve"
 
@@ -80,7 +82,8 @@ def test_M2_2species():
     # Check initial state
     g0 = solver.get_initial_state()
     print(f"  Initial φ: {g0[0:4]}")
-    assert np.allclose(g0[0:2], 0.0, atol=1e-6), "Species 1-2 should start at 0"
+    # Species 1-2 use epsilon (1e-10) to avoid division by zero
+    assert g0[0] < 1e-8 and g0[1] < 1e-8, "Species 1-2 should start near 0 (epsilon)"
     assert np.allclose(g0[2:4], 0.2, atol=1e-6), "Species 3-4 should start at 0.2"
 
     # Check interaction matrix masking
@@ -98,13 +101,14 @@ def test_M2_2species():
     print("  Running forward simulation...")
     t, g = solver.run_deterministic(theta, show_progress=False)
 
-    # Check species 1-2 remain at zero
+    # Check species 1-2 remain near zero (with zero interactions they stay ~epsilon)
     print(f"  Final φ: {g[-1, 0:4]}")
     print(f"  Max |φ₁| over time: {np.max(np.abs(g[:, 0]))}")
     print(f"  Max |φ₂| over time: {np.max(np.abs(g[:, 1]))}")
 
-    assert np.allclose(g[:, 0], 0.0, atol=1e-5), "Species 1 should remain at zero"
-    assert np.allclose(g[:, 1], 0.0, atol=1e-5), "Species 2 should remain at zero"
+    # Inactive species should stay very small (near epsilon ~1e-10)
+    assert np.max(g[:, 0]) < 1e-7, "Species 1 should remain near zero"
+    assert np.max(g[:, 1]) < 1e-7, "Species 2 should remain near zero"
     assert not np.allclose(g[:, 2], 0.2), "Species 3 should evolve"
     assert not np.allclose(g[:, 3], 0.2), "Species 4 should evolve"
 
