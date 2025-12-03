@@ -35,7 +35,7 @@ class TestBiofilmNewtonSolver:
         # Check dt is within reasonable range (depends on DEBUG mode)
         assert 1e-5 <= solver.dt <= 1e-3, f"dt={solver.dt} outside expected range"
         assert solver.maxtimestep == 50
-        assert solver.phi_init == 0.05
+        np.testing.assert_allclose(solver.phi_init, [0.05] * 4)
         assert len(solver.Eta_vec) == 4
 
     def test_initial_state_mass_conservation(self, solver):
@@ -118,6 +118,23 @@ class TestBiofilmNewtonSolver:
 
             # Check initial condition
             np.testing.assert_allclose(g[0, 0:4], phi_init, rtol=1e-10)
+
+    def test_vector_phi_init(self, theta_true):
+        """Test solver accepts a length-4 vector for phi_init"""
+        phi_init_vec = [0.2, 0.2, 0.0, 0.0]
+        config_M1 = CONFIG["M1"].copy()
+        config_M1["maxtimestep"] = 10
+        solver = BiofilmNewtonSolver(
+            phi_init=phi_init_vec,
+            use_numba=False,
+            **config_M1,
+        )
+        t, g = solver.run_deterministic(theta_true, show_progress=False)
+
+        # Initial state uses the provided vector and preserves mass
+        expected_phi = np.maximum(phi_init_vec, 1e-8)
+        np.testing.assert_allclose(g[0, 0:4], expected_phi, rtol=1e-10)
+        np.testing.assert_allclose(g[0, 0:4].sum() + g[0, 4], 1.0, rtol=1e-10)
 
     @pytest.mark.parametrize("use_numba", [True, False])
     def test_numba_vs_numpy_consistency(self, theta_true, use_numba):
