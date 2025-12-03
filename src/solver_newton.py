@@ -233,6 +233,24 @@ class BiofilmNewtonSolver:
                     raise RuntimeError(f"NaN at t={tt}")
                 dg = np.linalg.solve(K, -Q)
                 g_new = g_new + dg
+
+                # CRITICAL: Prevent phi from going below minimum threshold to avoid division by zero
+                # Even inactive species with zero interactions can drift toward zero during Newton solve
+                phi_min = 1e-8  # Larger than 1e-10 to provide safety margin
+                psi_min = 1e-8
+                g_new[0:4] = np.maximum(g_new[0:4], phi_min)  # Protect phi_1..4
+                g_new[4] = np.maximum(g_new[4], phi_min)      # Protect phi_0
+                g_new[5:9] = np.maximum(g_new[5:9], psi_min)  # Protect psi_1..4
+
+                # CRITICAL: Fix inactive species at their initial values for true 2-species behavior
+                # The constraint equation couples all species, so we must explicitly enforce this
+                if self.active_species is not None:
+                    inactive = [i for i in range(4) if i not in self.active_species]
+                    for i in inactive:
+                        g_new[i] = self.phi_init  # Reset inactive species phi to initial value
+                        # Keep psi at previous value too (no evolution)
+                        g_new[i+5] = g_prev[i+5]
+
                 if np.max(np.abs(Q)) < eps:
                     break
             g_prev = g_new.copy()
