@@ -7,7 +7,7 @@ PDE system. Run with: pytest tests/test_solver.py
 import pytest
 import numpy as np
 from src.solver_newton import BiofilmNewtonSolver
-from src.config import get_theta_true, CONFIG
+from src.config import get_theta_true, CONFIG, get_model_config
 
 
 class TestBiofilmNewtonSolver:
@@ -189,6 +189,33 @@ class TestBiofilmNewtonSolver:
         assert np.all(np.isfinite(g))
         phi_sum = g[:, 0:4].sum(axis=1) + g[:, 4]
         np.testing.assert_allclose(phi_sum, 1.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("model_id", ["M1", "M2", "M3"])
+def test_hierarchical_configs_initialize(model_id):
+    """Configs used by hierarchical_case2 should build and run without NameErrors."""
+
+    cfg = get_model_config(model_id).copy()
+
+    # Keep runs short for test speed while exercising the constructor path.
+    cfg["maxtimestep"] = 1
+    cfg["dt"] = cfg.get("dt", 1e-5)
+
+    phi_init = cfg.pop("phi_init", 0.02)
+    theta_indices = cfg.pop("theta_indices", None)
+
+    solver = BiofilmNewtonSolver(
+        phi_init=phi_init,
+        theta_indices=theta_indices,
+        use_numba=False,
+        **cfg,
+    )
+
+    # Run a single deterministic step to verify solver wiring for each model.
+    t, g = solver.run_deterministic(get_theta_true(), show_progress=False)
+
+    assert t.size == solver.maxtimestep + 1
+    assert g.shape[0] == solver.maxtimestep + 1
 
 
 if __name__ == "__main__":
