@@ -25,7 +25,7 @@ except ImportError:
     print("Warning: memory_profiler not installed")
     print("Install with: pip install memory_profiler")
 
-from src.config import CONFIG, get_theta_true
+from src.config import CONFIG, get_model_config, get_theta_true
 from src.solver_newton import BiofilmNewtonSolver
 from src.hierarchical import hierarchical_case2
 
@@ -37,8 +37,8 @@ def profile_solver():
 
     def run_solver():
         theta = get_theta_true()
-        config = CONFIG["M1"]
-        phi_init = CONFIG["phi_init_M1"]
+        config = get_model_config("M1")
+        phi_init = config.pop("phi_init", 0.02)
 
         solver = BiofilmNewtonSolver(
             phi_init=phi_init,
@@ -123,11 +123,11 @@ def analyze_array_memory():
     print("\nArray Memory Analysis")
     print("=" * 60)
 
-    config = CONFIG["M1"]
+    config = get_model_config("M1")
 
     # Estimate memory for key arrays
     maxtimestep = config["maxtimestep"]
-    n_species = 4
+    n_species = config.get("num_species", 4)
     n_params = 14
 
     # State vectors (phi, psi for each species)
