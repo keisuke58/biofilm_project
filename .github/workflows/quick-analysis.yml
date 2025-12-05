@@ -56,11 +56,17 @@ jobs:
           echo "Running TSM sensitivity..."
           mkdir -p results
           python -c "
-          from src.config import CONFIG, get_theta_true
+          from src.config import CONFIG, get_model_config, get_theta_true
           from src.tsm import compute_tsm_sensitivity
           import numpy as np
+
           theta = get_theta_true()
-          S = compute_tsm_sensitivity(theta, CONFIG['M1'])
+          config = get_model_config('M1', CONFIG)
+          S = compute_tsm_sensitivity(
+              theta,
+              config,
+              active_theta_indices=config.get('theta_indices'),
+          )
           np.save('results/quick_sensitivity.npy', S)
           print(f'Sensitivity shape: {S.shape}')
           "
