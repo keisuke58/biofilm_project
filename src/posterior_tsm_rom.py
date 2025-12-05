@@ -31,7 +31,7 @@ def tsm_generate_phi_timeseries(theta, CONFIG, model_id):
     model_config = get_model_config(model_id, CONFIG)
 
     # 2) Create Newton solver with proper parameters
-    solver_kwargs = {k: v for k, v in model_config.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}}
+    solver_kwargs = {k: v for k, v in model_config.items() if k not in {"phi_init", "num_species", "theta_indices"}}
     solver = BiofilmNewtonSolver(
         phi_init=model_config.get("phi_init", 0.02),
         species_count=model_config.get("num_species"),
