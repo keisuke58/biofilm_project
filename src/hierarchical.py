@@ -286,7 +286,7 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
         species_count=cfg_M1["num_species"],
         theta_indices=cfg_M1.get("theta_indices"),
         use_numba=False,
-        **{k: v for k, v in cfg_M1.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
+        **{k: v for k, v in cfg_M1.items() if k not in {"phi_init", "num_species", "theta_indices"}},
     )
     t1, g1 = solver_M1.run_deterministic(theta_true, show_progress=True)
 
@@ -297,7 +297,7 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
         species_count=cfg_M2["num_species"],
         theta_indices=cfg_M2.get("theta_indices"),
         use_numba=False,
-        **{k: v for k, v in cfg_M2.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
+        **{k: v for k, v in cfg_M2.items() if k not in {"phi_init", "num_species", "theta_indices"}},
     )
     t2, g2 = solver_M2.run_deterministic(theta_true, show_progress=True)
 
@@ -308,7 +308,7 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
         species_count=cfg_M3["num_species"],
         theta_indices=cfg_M3.get("theta_indices"),
         use_numba=HAS_NUMBA,
-        **{k: v for k, v in cfg_M3.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
+        **{k: v for k, v in cfg_M3.items() if k not in {"phi_init", "num_species", "theta_indices"}},
     )
     t3, g3 = solver_M3.run_deterministic(theta_true, show_progress=True)
     
