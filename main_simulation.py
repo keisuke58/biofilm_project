@@ -41,9 +41,22 @@ def _plot_timeseries(outputs: dict, output_dir: Path) -> None:
     n = outputs["n"]
     phi = g[:, :n]
 
+    # Use stable colors so species 3 and 4 are always green and red, respectively.
+    base_colors = ["C0", "C1", "green", "red"]
+    color_cycle = [base_colors[i] if i < len(base_colors) else f"C{i}" for i in range(n)]
+
+    line_styles = ["solid", "dashed", "dashdot", "dotted"]
+
     fig, ax = plt.subplots(figsize=(6.0, 4.0))
-    for idx in range(phi.shape[1]):
-        ax.plot(t, phi[:, idx], label=fr"$\phi_{idx + 1}(t)$")
+    for idx, series in enumerate(phi.T):
+        ax.plot(
+            t,
+            series,
+            label=fr"$\phi_{idx + 1}(t)$",
+            color=color_cycle[idx],
+            linestyle=line_styles[idx % len(line_styles)],
+            linewidth=2.0 if idx == 0 else 1.6,
+        )
 
     ax.set_xlabel("Time $t$")
     ax.set_ylabel(r"$\phi_\ell(t)$")
