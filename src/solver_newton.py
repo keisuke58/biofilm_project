@@ -10,6 +10,272 @@ from .progress import ProgressTracker
 HAS_NUMBA = True  # 環境に合わせて切り替え（例外処理を足してもOK）
 
 
+class NSpeciesNewtonSolver:
+    """
+    一般 N 種モデル用 Newton ソルバー（時間発展付き）
+
+    状態ベクトル:
+        g = [phi_0..phi_{N-1}, phi0, psi_0..psi_{N-1}, gamma]  (len = 2N+2)
+
+    パラメータ:
+        - A: (N,N) 行列
+        - b_diag: (N,) ベクトル
+        - Eta_vec: (N,) 粘性係数
+    """
+
+    def __init__(
+        self,
+        n_species,
+        dt=1e-4,
+        maxtimestep=1000,
+        eps=1e-6,
+        Kp1=1e-4,
+        eta_vec=None,
+        c_const=100.0,
+        alpha_const=10.0,
+    ):
+        self.n = int(n_species)
+        self.dt = dt
+        self.maxtimestep = maxtimestep
+        self.eps = eps
+        self.Kp1 = Kp1
+
+        if eta_vec is None:
+            eta_vec = np.ones(self.n, dtype=float)
+        self.Eta_vec = np.asarray(eta_vec, dtype=float)
+        self.Eta_phi_vec = self.Eta_vec.copy()
+
+        self.c_const = float(c_const)
+        self.alpha_const = float(alpha_const)
+
+    # 必要なら時間依存に書き換えてもよい
+    def c(self, t):
+        return self.c_const
+
+    def alpha(self, t):
+        return self.alpha_const
+
+    # --------- ⭐ 初期 g を作るユーティリティ ---------
+    def make_initial_g(self, phi_init, psi_init=None, gamma_init=1e-6):
+        """
+        phi_init: shape (N,)
+        psi_init: shape (N,) or None（None のときは全部 0.999）
+        """
+        n = self.n
+        phi_init = np.asarray(phi_init, dtype=float)
+        assert phi_init.shape == (n,)
+
+        if psi_init is None:
+            psi_init = 0.999 * np.ones(n, dtype=float)
+        else:
+            psi_init = np.asarray(psi_init, dtype=float)
+            assert psi_init.shape == (n,)
+
+        phi0_0 = 1.0 - np.sum(phi_init)
+
+        g = np.zeros(2 * n + 2, dtype=float)
+        g[0:n] = phi_init
+        g[n] = phi0_0
+        g[n + 1 : n + 1 + n] = psi_init
+        g[-1] = gamma_init
+        return g
+
+    # -------- Q ベクトル（一般 N 種版） --------
+    def compute_Q_vector(self, g_new, g_old, t, dt, A, b_diag):
+        """
+        g_new, g_old: shape (2N+2,)
+        戻り値 Q: shape (2N+2,)
+        """
+        n = self.n
+        Kp1 = self.Kp1
+        Eta_vec = self.Eta_vec
+        Eta_phi_vec = self.Eta_phi_vec
+        c_val = self.c(t)
+        alpha_val = self.alpha(t)
+
+        # 展開
+        phi_new = g_new[0:n]  # (N,)
+        phi0_new = g_new[n]  # scalar
+        psi_new = g_new[n + 1 : n + 1 + n]  # (N,)
+        gamma_new = g_new[-1]  # scalar
+
+        phi_old = g_old[0:n]
+        phi0_old = g_old[n]
+        psi_old = g_old[n + 1 : n + 1 + n]
+
+        # 時間微分
+        phidot = (phi_new - phi_old) / dt
+        phi0dot = (phi0_new - phi0_old) / dt
+        psidot = (psi_new - psi_old) / dt
+
+        # 相互作用 A @ (phi * psi)
+        CapitalPhi = phi_new * psi_new  # (N,)
+        Interaction = A @ CapitalPhi  # (N,)
+
+        Q = np.zeros(2 * n + 2)
+
+        # φ_i の式 (i = 0..N-1)
+        for i in range(n):
+            v = phi_new[i]
+            term1 = (Kp1 * (2.0 - 4.0 * v)) / ((v - 1.0) ** 3 * v**3)
+            term2 = (1.0 / Eta_vec[i]) * (
+                gamma_new
+                + (Eta_phi_vec[i] + Eta_vec[i] * psi_new[i] ** 2) * phidot[i]
+                + Eta_vec[i] * v * psi_new[i] * psidot[i]
+            )
+            term3 = (c_val / Eta_vec[i]) * psi_new[i] * Interaction[i]
+            Q[i] = term1 + term2 - term3
+
+        # φ0 の式 (インデックス n)
+        Q[n] = (
+            gamma_new
+            + (Kp1 * (2.0 - 4.0 * phi0_new)) / ((phi0_new - 1.0) ** 3 * phi0_new**3)
+            + phi0dot
+        )
+
+        # ψ_i の式 (i = 0..N-1) → Q[n+1 .. n+N]
+        for i in range(n):
+            v = psi_new[i]
+            term1 = (-2.0 * Kp1) / ((v - 1.0) ** 2 * v**3) - (2.0 * Kp1) / (
+                (v - 1.0) ** 3 * v**2
+            )
+            term2 = (b_diag[i] * alpha_val / Eta_vec[i]) * v
+            term3 = phi_new[i] * v * phidot[i] + phi_new[i] ** 2 * psidot[i]
+            term4 = (c_val / Eta_vec[i]) * phi_new[i] * Interaction[i]
+            Q[n + 1 + i] = term1 + term2 + term3 - term4
+
+        # 質量制約: Σ φ_i + φ0 = 1 → 最後の成分
+        Q[-1] = np.sum(phi_new) + phi0_new - 1.0
+
+        return Q
+
+    # -------- 数値ヤコビアン（有限差分） --------
+    def compute_jacobian_numeric(self, g_new, g_old, t, dt, A, b_diag, eps_theta=1e-8):
+        """
+        数値微分でヤコビアン K = ∂Q/∂g を求める（(2N+2)×(2N+2)）
+        """
+        nvar = len(g_new)
+        K = np.zeros((nvar, nvar))
+
+        for j in range(nvar):
+            h = eps_theta * max(1.0, abs(g_new[j]))
+            g_plus = g_new.copy()
+            g_minus = g_new.copy()
+            g_plus[j] += h
+            g_minus[j] -= h
+
+            Q_plus = self.compute_Q_vector(g_plus, g_old, t, dt, A, b_diag)
+            Q_minus = self.compute_Q_vector(g_minus, g_old, t, dt, A, b_diag)
+
+            K[:, j] = (Q_plus - Q_minus) / (2.0 * h)
+
+        return K
+
+    # --------- ⭐ Newton 1ステップだけ行う関数 ---------
+    def newton_step(self, g_prev, t, A, b_diag):
+        """
+        1 タイムステップの Newton 反復だけを行う。
+        A, b_diag はその時刻に有効なもの（M3val 切り替えもここで反映）。
+        """
+        g_new = g_prev.copy()
+
+        for it in range(50):
+            Q = self.compute_Q_vector(g_new, g_prev, t, self.dt, A, b_diag)
+            if np.max(np.abs(Q)) < self.eps:
+                break
+
+            K = self.compute_jacobian_numeric(g_new, g_prev, t, self.dt, A, b_diag)
+            try:
+                dg = np.linalg.solve(K, -Q)
+            except np.linalg.LinAlgError:
+                raise RuntimeError(f"Jacobian is singular at t={t}, it={it}")
+
+            g_new = g_new + dg
+
+        return g_new
+
+    # -------- 時間発展（A,b が一定のとき用） --------
+    def run_deterministic(
+        self,
+        A,
+        b_diag,
+        phi_init,
+        psi_init=None,
+        gamma_init=1e-6,
+        show_progress=True,
+    ):
+        """
+        与えられた A, b_diag, 初期値で N 種モデルを時間発展させる。
+        （A,b 一定のとき用。M3val など途中で変えたいなら newton_step を使う）
+        """
+        n = self.n
+        A = np.asarray(A, dtype=float)
+        b_diag = np.asarray(b_diag, dtype=float)
+        phi_init = np.asarray(phi_init, dtype=float)
+
+        assert A.shape == (n, n)
+        assert b_diag.shape == (n,)
+
+        if psi_init is None:
+            psi_init = 0.999 * np.ones(n, dtype=float)
+        else:
+            psi_init = np.asarray(psi_init, dtype=float)
+            assert psi_init.shape == (n,)
+
+        dt, maxtimestep, eps = self.dt, self.maxtimestep, self.eps
+
+        # 初期条件
+        phi0_0 = 1.0 - np.sum(phi_init)
+        g_prev = np.zeros(2 * n + 2, dtype=float)
+        g_prev[0:n] = phi_init
+        g_prev[n] = phi0_0
+        g_prev[n + 1 : n + 1 + n] = psi_init
+        g_prev[-1] = gamma_init
+
+        t_list = [0.0]
+        g_list = [g_prev.copy()]
+
+        if show_progress:
+            print(f"[NSpecies] N={n}, dt={dt}, steps={maxtimestep}")
+
+        for step in range(maxtimestep):
+            t = (step + 1) * dt
+            g_new = g_prev.copy()
+
+            # Newton 反復
+            for it in range(50):
+                Q = self.compute_Q_vector(g_new, g_prev, t, dt, A, b_diag)
+                max_Q = np.max(np.abs(Q))
+                if max_Q < eps:
+                    break
+
+                K = self.compute_jacobian_numeric(g_new, g_prev, t, dt, A, b_diag)
+                try:
+                    dg = np.linalg.solve(K, -Q)
+                except np.linalg.LinAlgError:
+                    raise RuntimeError(
+                        f"Jacobian is singular at t={t}, step={step}, it={it}"
+                    )
+                g_new = g_new + dg
+
+            # 収束チェック（必要なら緩めの warning）
+            Q_final = self.compute_Q_vector(g_new, g_prev, t, dt, A, b_diag)
+            if np.max(np.abs(Q_final)) > 1e-3 and show_progress:
+                print(
+                    f"  Warning: step {step}, residual = "
+                    f"{np.max(np.abs(Q_final)):.2e}"
+                )
+
+            g_prev = g_new.copy()
+            t_list.append(t)
+            g_list.append(g_new.copy())
+
+            if show_progress and (step + 1) % max(1, maxtimestep // 10) == 0:
+                print(f"  step {step+1}/{maxtimestep}")
+
+        return np.array(t_list), np.vstack(g_list)
+
+
 class BiofilmNewtonSolver:
     """
     Newton solver with configurable initial conditions
