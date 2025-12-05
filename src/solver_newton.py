@@ -317,13 +317,12 @@ class BiofilmNewtonSolver:
         self.maxtimestep = maxtimestep
         self.eps = eps
         self.Kp1 = Kp1
+        # Species dimensionality
+        if active_species is None and global_species_indices is not None:
+            active_species = list(global_species_indices)
 
-        inferred_active = None if active_species is None else list(active_species)
-        if inferred_active is None and global_species_indices is not None:
-            inferred_active = list(global_species_indices)
-
-        if inferred_active is not None:
-            inferred_species = len(inferred_active)
+        if active_species is not None:
+            inferred_species = len(active_species)
         elif np.isscalar(phi_init):
             inferred_species = 4 if species_count is None else species_count
         else:
