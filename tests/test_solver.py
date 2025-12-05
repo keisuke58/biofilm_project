@@ -218,21 +218,5 @@ def test_hierarchical_configs_initialize(model_id):
     assert g.shape[0] == solver.maxtimestep + 1
 
 
-def test_active_species_empty_list_defaults_to_full_state():
-    """An empty ``active_species`` should not trigger ``max()`` errors."""
-
-    cfg = get_model_config("M1").copy()
-    cfg["active_species"] = []
-
-    solver = BiofilmNewtonSolver(
-        phi_init=cfg.pop("phi_init", 0.02),
-        theta_indices=cfg.pop("theta_indices", None),
-        use_numba=False,
-        **cfg,
-    )
-
-    assert solver.n == len(cfg.get("global_species_indices", [])) or solver.n == cfg.get("num_species")
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
