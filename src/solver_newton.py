@@ -329,6 +329,15 @@ class BiofilmNewtonSolver:
             inferred_species = len(np.asarray(phi_init, dtype=float))
         self.n = species_count or inferred_species
 
+        # If the provided indices reference the *global* 4-species layout (e.g., [2,3]
+        # for M2), collapse them to the local [0, 1, ..., n-1] indexing used by the
+        # reduced solver to avoid out-of-bounds masking inside theta_to_matrices.
+        if inferred_active is not None:
+            if max(inferred_active) >= self.n:
+                active_species = list(range(self.n))
+            else:
+                active_species = inferred_active
+
         # Optional mapping that selects which five Case-II parameters belong to
         # a 2-species submodel (e.g., [0..4] for M1 or [5..9] for M2). When
         # provided, legacy 14-length theta vectors are sliced before building
