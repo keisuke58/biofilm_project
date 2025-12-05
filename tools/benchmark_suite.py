@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
-from src.config import CONFIG, get_theta_true
+from src.config import CONFIG, get_model_config, get_theta_true
 from src.solver_newton import BiofilmNewtonSolver
 from src.tsm import BiofilmTSM
 from src.tmcmc import tmcmc
@@ -42,8 +42,8 @@ class BenchmarkSuite:
         print("Benchmarking: PDE Solver...")
 
         theta = get_theta_true()
-        config = CONFIG["M1"]
-        phi_init = CONFIG["phi_init_M1"]
+        config = get_model_config("M1")
+        phi_init = config.pop("phi_init", 0.02)
 
         solver = BiofilmNewtonSolver(
             phi_init=phi_init,
@@ -76,8 +76,8 @@ class BenchmarkSuite:
         print("Benchmarking: TSM...")
 
         theta = get_theta_true()
-        config = CONFIG["M1"]
-        phi_init = CONFIG["phi_init_M1"]
+        config = get_model_config("M1")
+        phi_init = config.pop("phi_init", 0.02)
 
         solver = BiofilmNewtonSolver(
             phi_init=phi_init,
@@ -88,7 +88,7 @@ class BenchmarkSuite:
         tsm = BiofilmTSM(
             solver,
             cov_rel=CONFIG["cov_rel"],
-            active_theta_indices=CONFIG["theta_active_indices_M1"],
+            active_theta_indices=config.get("theta_indices"),
             use_analytical=True
         )
 
@@ -169,8 +169,8 @@ class BenchmarkSuite:
 
             def run_solver():
                 theta = get_theta_true()
-                config = CONFIG["M1"]
-                phi_init = CONFIG["phi_init_M1"]
+                config = get_model_config("M1")
+                phi_init = config.pop("phi_init", 0.02)
                 solver = BiofilmNewtonSolver(
                     phi_init=phi_init,
                     use_numba=True,

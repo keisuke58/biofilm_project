@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
-from src.config import CONFIG, get_theta_true
+from src.config import CONFIG, get_model_config, get_theta_true
 from src.solver_newton import BiofilmNewtonSolver
 from src.tsm import BiofilmTSM
 from src.tmcmc import tmcmc
@@ -38,8 +38,8 @@ def profile_solver(n_runs=5):
     print("=" * 70)
 
     theta = get_theta_true()
-    config_M1 = CONFIG["M1"]
-    phi_init = CONFIG["phi_init_M1"]
+    config_M1 = get_model_config("M1")
+    phi_init = config_M1.pop("phi_init", 0.02)
 
     solver = BiofilmNewtonSolver(
         phi_init=phi_init,
@@ -80,8 +80,8 @@ def profile_tsm(n_runs=5):
     print("=" * 70)
 
     theta = get_theta_true()
-    config_M1 = CONFIG["M1"]
-    phi_init = CONFIG["phi_init_M1"]
+    config_M1 = get_model_config("M1")
+    phi_init = config_M1.pop("phi_init", 0.02)
 
     solver = BiofilmNewtonSolver(
         phi_init=phi_init,
@@ -89,10 +89,12 @@ def profile_tsm(n_runs=5):
         **config_M1
     )
 
+    active_theta_indices = config_M1.get("theta_indices")
+
     tsm = BiofilmTSM(
         solver,
         cov_rel=CONFIG["cov_rel"],
-        active_theta_indices=CONFIG["theta_active_indices_M1"],
+        active_theta_indices=active_theta_indices,
         use_analytical=True
     )
 
@@ -115,7 +117,8 @@ def profile_tsm(n_runs=5):
 
     print(f"\nResults:")
     print(f"  Mean time:        {mean_time:.3f} ± {std_time:.3f} s")
-    print(f"  Active params:    {len(CONFIG['theta_active_indices_M1'])}")
+    if active_theta_indices is not None:
+        print(f"  Active params:    {len(active_theta_indices)}")
     print(f"  Analytical sens:  Yes")
 
     return {"component": "tsm", "mean": mean_time, "std": std_time}
