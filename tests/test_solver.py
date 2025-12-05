@@ -7,7 +7,7 @@ PDE system. Run with: pytest tests/test_solver.py
 import pytest
 import numpy as np
 from src.solver_newton import BiofilmNewtonSolver
-from src.config import get_theta_true, CONFIG
+from src.config import get_theta_true, CONFIG, get_model_config
 
 
 class TestBiofilmNewtonSolver:
@@ -16,13 +16,14 @@ class TestBiofilmNewtonSolver:
     @pytest.fixture
     def solver(self):
         """Create a test solver with debug settings"""
-        # Use M1 config but override maxtimestep for faster tests
-        config_M1 = CONFIG["M1"].copy()
-        config_M1["maxtimestep"] = 50  # Short run for testing
+        # Use the 4-species M3 config but override maxtimestep for faster tests
+        config_M3 = CONFIG["M3"].copy()
+        config_M3["maxtimestep"] = 50  # Short run for testing
+        config_M3.pop("phi_init", None)  # Explicitly override below
         return BiofilmNewtonSolver(
             phi_init=0.05,
             use_numba=True,
-            **config_M1
+            **config_M3
         )
 
     @pytest.fixture
@@ -103,12 +104,13 @@ class TestBiofilmNewtonSolver:
     def test_different_phi_init(self, theta_true):
         """Test solver with different initial conditions"""
         for phi_init in [0.02, 0.1, 0.2]:
-            config_M1 = CONFIG["M1"].copy()
-            config_M1["maxtimestep"] = 20  # Short run for testing
+            config_M3 = CONFIG["M3"].copy()
+            config_M3["maxtimestep"] = 20  # Short run for testing
+            config_M3.pop("phi_init", None)
             solver = BiofilmNewtonSolver(
                 phi_init=phi_init,
                 use_numba=True,
-                **config_M1
+                **config_M3
             )
             t, g = solver.run_deterministic(theta_true, show_progress=False)
 
@@ -122,12 +124,13 @@ class TestBiofilmNewtonSolver:
     def test_vector_phi_init(self, theta_true):
         """Test solver accepts a length-4 vector for phi_init"""
         phi_init_vec = [0.2, 0.2, 0.0, 0.0]
-        config_M1 = CONFIG["M1"].copy()
-        config_M1["maxtimestep"] = 10
+        config_M3 = CONFIG["M3"].copy()
+        config_M3["maxtimestep"] = 10
+        config_M3.pop("phi_init", None)
         solver = BiofilmNewtonSolver(
             phi_init=phi_init_vec,
             use_numba=False,
-            **config_M1,
+            **config_M3,
         )
         t, g = solver.run_deterministic(theta_true, show_progress=False)
 
@@ -172,12 +175,13 @@ class TestBiofilmNewtonSolver:
     @pytest.mark.parametrize("use_numba", [True, False])
     def test_numba_vs_numpy_consistency(self, theta_true, use_numba):
         """Test that Numba and NumPy versions give similar results"""
-        config_M1 = CONFIG["M1"].copy()
-        config_M1["maxtimestep"] = 20  # Short run for testing
+        config_M3 = CONFIG["M3"].copy()
+        config_M3["maxtimestep"] = 20  # Short run for testing
+        config_M3.pop("phi_init", None)
         solver = BiofilmNewtonSolver(
             phi_init=0.05,
             use_numba=use_numba,
-            **config_M1
+            **config_M3
         )
         t, g = solver.run_deterministic(theta_true, show_progress=False)
 
@@ -185,6 +189,33 @@ class TestBiofilmNewtonSolver:
         assert np.all(np.isfinite(g))
         phi_sum = g[:, 0:4].sum(axis=1) + g[:, 4]
         np.testing.assert_allclose(phi_sum, 1.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("model_id", ["M1", "M2", "M3"])
+def test_hierarchical_configs_initialize(model_id):
+    """Configs used by hierarchical_case2 should build and run without NameErrors."""
+
+    cfg = get_model_config(model_id).copy()
+
+    # Keep runs short for test speed while exercising the constructor path.
+    cfg["maxtimestep"] = 1
+    cfg["dt"] = cfg.get("dt", 1e-5)
+
+    phi_init = cfg.pop("phi_init", 0.02)
+    theta_indices = cfg.pop("theta_indices", None)
+
+    solver = BiofilmNewtonSolver(
+        phi_init=phi_init,
+        theta_indices=theta_indices,
+        use_numba=False,
+        **cfg,
+    )
+
+    # Run a single deterministic step to verify solver wiring for each model.
+    t, g = solver.run_deterministic(get_theta_true(), show_progress=False)
+
+    assert t.size == solver.maxtimestep + 1
+    assert g.shape[0] == solver.maxtimestep + 1
 
 
 if __name__ == "__main__":
