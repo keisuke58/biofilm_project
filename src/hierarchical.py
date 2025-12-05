@@ -17,7 +17,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from .config import CONFIG, get_theta_true
+from .config import CONFIG, get_model_config, get_theta_true
 from .solver_newton import BiofilmNewtonSolver
 from .tsm import BiofilmTSM, TSMResult, log_likelihood_sparse
 from .tmcmc import TMCMCResult, tmcmc
@@ -113,22 +113,12 @@ except ImportError:
     print("⚠ Numba not available: using pure NumPy (slower)")
 
 
-def _normalize_phi_init(phi_init_cfg, species_count: int, active_indices=None):
+def _normalize_phi_init(phi_init_cfg, species_count: int):
     """Return a species_count-length φ₀ vector, handling scalar inputs gracefully."""
 
-    active = list(active_indices) if active_indices is not None else None
-
     arr = np.asarray(phi_init_cfg, dtype=float)
-    if arr.ndim == 0:  # scalar -> broadcast to the active subset (or species_count)
-        target_len = len(active) if active is not None else species_count
-        arr = np.full(target_len, float(arr))
-
-    if active is not None:
-        max_idx = max(active)
-        if arr.size <= max_idx:
-            arr = np.pad(arr, (0, max_idx + 1 - arr.size))
-        arr = np.array([arr[i] for i in active])
-        return arr
+    if arr.ndim == 0:  # scalar -> broadcast to the requested dimensionality
+        arr = np.full(species_count, float(arr))
 
     if arr.size < species_count:
         arr = np.pad(arr, (0, species_count - arr.size))
@@ -290,35 +280,35 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     np.random.seed(42)
 
     # M1 solver: TRUE 2-species submodel (species 1-2 only)
+    cfg_M1 = get_model_config("M1", config)
     solver_M1 = BiofilmNewtonSolver(
-        phi_init=_normalize_phi_init(
-            config["phi_init_M1"], 2, config.get("active_species_M1", [0, 1])
-        ),
-        species_count=2,
-        theta_indices=[0, 1, 2, 3, 4],
+        phi_init=_normalize_phi_init(cfg_M1.get("phi_init", 0.2), cfg_M1["num_species"]),
+        species_count=cfg_M1["num_species"],
+        theta_indices=cfg_M1.get("theta_indices"),
         use_numba=False,
-        **config["M1"]
+        **{k: v for k, v in cfg_M1.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
     )
     t1, g1 = solver_M1.run_deterministic(theta_true, show_progress=True)
 
     # M2 solver: TRUE 2-species submodel (species 3-4 only)
+    cfg_M2 = get_model_config("M2", config)
     solver_M2 = BiofilmNewtonSolver(
-        phi_init=_normalize_phi_init(
-            config["phi_init_M2"], 2, config.get("active_species_M2", [2, 3])
-        ),
-        species_count=2,
-        theta_indices=[5, 6, 7, 8, 9],
+        phi_init=_normalize_phi_init(cfg_M2.get("phi_init", 0.2), cfg_M2["num_species"]),
+        species_count=cfg_M2["num_species"],
+        theta_indices=cfg_M2.get("theta_indices"),
         use_numba=False,
-        **config["M2"]
+        **{k: v for k, v in cfg_M2.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
     )
     t2, g2 = solver_M2.run_deterministic(theta_true, show_progress=True)
 
     # M3 solver: Full 4-species model
+    cfg_M3 = get_model_config("M3", config)
     solver_M3 = BiofilmNewtonSolver(
-        phi_init=config["phi_init_M3"],  # 0.02 (scalar, all 4 species)
-        active_species=config.get("active_species_M3"),  # None (all active)
+        phi_init=_normalize_phi_init(cfg_M3.get("phi_init", 0.02), cfg_M3["num_species"]),
+        species_count=cfg_M3["num_species"],
+        theta_indices=cfg_M3.get("theta_indices"),
         use_numba=HAS_NUMBA,
-        **config["M3"]
+        **{k: v for k, v in cfg_M3.items() if k not in {"phi_init", "num_species", "theta_indices", "global_species_indices"}},
     )
     t3, g3 = solver_M3.run_deterministic(theta_true, show_progress=True)
     
@@ -349,15 +339,15 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # =========================================================================
     print("\n" + "="*72)
     print("  Stage 1: M1 (TRUE 2-species submodel: species 1-2 only)")
-    print(f"  Initial ϕ = {config['phi_init_M1']}, Ndata = {Ndata}")
-    print(f"  Active species: {config.get('active_species_M1', 'all')}")
+    print(f"  Initial ϕ = {cfg_M1.get('phi_init', 0.2)}, Ndata = {Ndata}")
+    print(f"  Active species: {cfg_M1.get('global_species_indices', 'all')}")
     print("="*72)
 
     tsm_M1 = BiofilmTSM(
         solver_M1,
         cov_rel=config["cov_rel"],
         active_theta_indices=None,
-        theta_indices=[0, 1, 2, 3, 4],
+        theta_indices=cfg_M1.get("theta_indices"),
     )
     
     theta_prior_center = theta_true.copy()
@@ -420,15 +410,15 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # =========================================================================
     print("\n" + "="*72)
     print("  Stage 2: M2 (TRUE 2-species submodel: species 3-4 only)")
-    print(f"  Initial ϕ = {config['phi_init_M2']}, Ndata = {Ndata}")
-    print(f"  Active species: {config.get('active_species_M2', 'all')}")
+    print(f"  Initial ϕ = {cfg_M2.get('phi_init', 0.2)}, Ndata = {Ndata}")
+    print(f"  Active species: {cfg_M2.get('global_species_indices', 'all')}")
     print("="*72)
 
     tsm_M2 = BiofilmTSM(
         solver_M2,
         cov_rel=config["cov_rel"],
         active_theta_indices=None,
-        theta_indices=[5, 6, 7, 8, 9],
+        theta_indices=cfg_M2.get("theta_indices"),
     )
     
     def logL_M2(theta_M2):
@@ -487,12 +477,15 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # =========================================================================
     print("\n" + "="*72)
     print("  Stage 3: M3 (FULL 4-species model: all cross-interactions)")
-    print(f"  Initial ϕ = {config['phi_init_M3']}, Ndata = {Ndata}")
-    print(f"  Active species: {config.get('active_species_M3', 'all')}")
+    print(f"  Initial ϕ = {cfg_M3.get('phi_init', 0.02)}, Ndata = {Ndata}")
+    print(f"  Active species: {cfg_M3.get('global_species_indices', 'all')}")
     print("="*72)
 
-    tsm_M3 = BiofilmTSM(solver_M3, cov_rel=config["cov_rel"],
-                        active_theta_indices=config["theta_active_indices_M3"])
+    tsm_M3 = BiofilmTSM(
+        solver_M3,
+        cov_rel=config["cov_rel"],
+        active_theta_indices=cfg_M3.get("theta_indices"),
+    )
     
     def logL_M3(theta_M3):
         theta_full = theta_stage3_center.copy()
