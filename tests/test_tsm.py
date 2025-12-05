@@ -19,6 +19,9 @@ class TestBiofilmTSM:
         # Use M1 config but override maxtimestep for faster tests
         config_M1 = CONFIG["M1"].copy()
         config_M1["maxtimestep"] = 30  # Short for testing
+        config_M1.pop("phi_init", None)  # Allow explicit override below
+        config_M1.pop("num_species", None)  # Preserve legacy 4-species default
+        config_M1.pop("global_species_indices", None)
         return BiofilmNewtonSolver(
             phi_init=0.05,
             use_numba=True,

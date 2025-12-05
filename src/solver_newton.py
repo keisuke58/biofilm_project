@@ -288,7 +288,8 @@ class BiofilmNewtonSolver:
     def __init__(self, dt=1e-5, maxtimestep=2500, eps=1e-6, Kp1=1e-4,
                  eta_vec=None, c_const=100.0, alpha_const=100.0,
                  phi_init=0.02, use_numba=True, active_species=None,
-                 species_count=None, theta_indices=None):
+                 species_count=None, theta_indices=None, num_species=None,
+                 global_species_indices=None):
         """
         Initialize BiofilmNewtonSolver.
 
@@ -306,18 +307,37 @@ class BiofilmNewtonSolver:
             - M2: active_species=[2, 3] for species 3-4
             - M3: active_species=None or [0,1,2,3] for all species
         """
+        # Harmonize legacy ``num_species`` with the internal ``species_count``
+        if num_species is not None:
+            if species_count is not None and num_species != species_count:
+                raise ValueError("num_species and species_count must agree when both are provided")
+            species_count = num_species
+
         self.dt = dt
         self.maxtimestep = maxtimestep
         self.eps = eps
         self.Kp1 = Kp1
-        # Species dimensionality
-        if active_species is not None:
-            inferred_species = len(active_species)
+
+        active_hint = None if active_species is None else list(active_species)
+        if active_hint is None and global_species_indices is not None:
+            active_hint = list(global_species_indices)
+
+        if active_hint is not None:
+            inferred_species = len(active_hint)
         elif np.isscalar(phi_init):
             inferred_species = 4 if species_count is None else species_count
         else:
             inferred_species = len(np.asarray(phi_init, dtype=float))
         self.n = species_count or inferred_species
+
+        # If the provided indices reference the *global* 4-species layout (e.g., [2,3]
+        # for M2), collapse them to the local [0, 1, ..., n-1] indexing used by the
+        # reduced solver to avoid out-of-bounds masking inside theta_to_matrices.
+        if active_hint is not None:
+            if max(active_hint) >= self.n:
+                active_species = list(range(self.n))
+            else:
+                active_species = active_hint
 
         # Optional mapping that selects which five Case-II parameters belong to
         # a 2-species submodel (e.g., [0..4] for M1 or [5..9] for M2). When

@@ -336,6 +336,22 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
             f"theta length {theta.size} incompatible with active indices of length {len(active_idx)}"
         )
 
+    # Normalize configuration so ``phi_init`` and ``species_count`` stay aligned
+    # even when users provide mixed legacy keys (e.g., ``phi_init_M1``) or
+    # explicit ``num_species`` overrides.
+    phi_init = config.get("phi_init", config.get("phi_init_M1", 0.02))
+    species_count = config.get("num_species", config.get("species_count"))
+
+    if not np.isscalar(phi_init):
+        phi_init_arr = np.asarray(phi_init, dtype=float)
+        if species_count is None or species_count != phi_init_arr.size:
+            # Prefer the actual initial-condition dimensionality over any
+            # inconsistent user-provided species_count to avoid shape errors
+            # inside the Newton solver.
+            species_count = phi_init_arr.size
+    elif species_count is None:
+        species_count = 4
+
     # Instantiate solver with sensible defaults pulled from config
     solver = BiofilmNewtonSolver(
         dt=config.get("dt", 1e-5),
@@ -345,10 +361,11 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
         eta_vec=config.get("eta_vec"),
         c_const=config.get("c_const", 100.0),
         alpha_const=config.get("alpha_const", 100.0),
-        phi_init=config.get("phi_init", 0.02),
+        phi_init=phi_init,
         use_numba=config.get("use_numba", True),
-        active_species=config.get("active_species", config.get("active_species_M1")),
-        species_count=config.get("species_count"),
+        active_species=config.get("active_species", config.get("active_species_M1",
+                                                                config.get("global_species_indices"))),
+        species_count=species_count,
         theta_indices=config.get("theta_indices", config.get("theta_active_indices")),
     )
 
