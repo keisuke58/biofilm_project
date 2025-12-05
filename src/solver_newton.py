@@ -308,6 +308,7 @@ class BiofilmNewtonSolver:
             - M3: active_species=None or [0,1,2,3] for all species
         """
         # Harmonize legacy ``num_species`` with the internal ``species_count``
+        # hint used throughout the codebase.
         if num_species is not None:
             if species_count is not None and num_species != species_count:
                 raise ValueError("num_species and species_count must agree when both are provided")
@@ -317,17 +318,19 @@ class BiofilmNewtonSolver:
         self.maxtimestep = maxtimestep
         self.eps = eps
         self.Kp1 = Kp1
-        # Species dimensionality
+
+        # Species dimensionality: prefer explicit overrides, otherwise fall back
+        # to the length of ``phi_init`` (scalar → 4 species by default).
         if active_species is None and global_species_indices is not None:
             active_species = list(global_species_indices)
 
-        if active_species is not None:
-            inferred_species = len(active_species)
+        if species_count is not None:
+            inferred_species = species_count
         elif np.isscalar(phi_init):
-            inferred_species = 4 if species_count is None else species_count
+            inferred_species = 4
         else:
             inferred_species = len(np.asarray(phi_init, dtype=float))
-        self.n = species_count or inferred_species
+        self.n = int(inferred_species)
 
         # If the provided indices reference the *global* 4-species layout (e.g., [2,3]
         # for M2), collapse them to the local [0, 1, ..., n-1] indexing used by the
@@ -381,7 +384,12 @@ class BiofilmNewtonSolver:
             theta = theta[self.theta_indices]
 
         if theta.shape == (14,):
-            a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta
+            theta_full = theta
+            if self.theta_indices is not None and self.n != 2:
+                theta_full = np.zeros_like(theta)
+                theta_full[self.theta_indices] = theta[self.theta_indices]
+
+            a11, a12, a22, b1, b2, a33, a34, a44, b3, b4, a13, a14, a23, a24 = theta_full
             A_full = np.array([
                 [a11, a12, a13, a14],
                 [a12, a22, a23, a24],
@@ -408,14 +416,13 @@ class BiofilmNewtonSolver:
             b_full = theta[idx: idx + self.n]
 
         if self.active_species is not None:
-            active_idx = np.array(self.active_species, dtype=int)
-            A = A_full[np.ix_(active_idx, active_idx)]
-            b_diag = b_full[active_idx]
-        else:
-            A = A_full
-            b_diag = b_full
+            inactive = [i for i in range(self.n) if i not in self.active_species]
+            for i in inactive:
+                A_full[i, :] = 0.0
+                A_full[:, i] = 0.0
+                b_full[i] = 0.0
 
-        return A, b_diag
+        return A_full, b_full
 
     # 初期状態
     def get_initial_state(self):
