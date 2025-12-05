@@ -133,14 +133,16 @@ class BiofilmTSM:
 
         dG_dict = {}
         for idx in self.active_idx:
+            theta_idx = self.theta_indices[idx] if self.theta_indices is not None else idx
             if HAS_NUMBA:
                 dQ = dQ_dtheta_analytical_numba(
-                    phi_new, psi_new, c_val, alpha_val, Eta_vec, CapitalPhi, idx
+                    phi_new, psi_new, c_val, alpha_val, Eta_vec, CapitalPhi, theta_idx
                 )
             else:
-                dQ = self._dQ_dtheta_numpy(phi_new, psi_new, c_val, alpha_val,
-                                           Eta_vec, CapitalPhi, idx)
-            dG_dict[self.THETA_NAMES[idx]] = dQ
+                dQ = self._dQ_dtheta_numpy(
+                    phi_new, psi_new, c_val, alpha_val, Eta_vec, CapitalPhi, theta_idx
+                )
+            dG_dict[self.theta_names[idx]] = dQ
         return dG_dict
 
     # 数値差分版 dG/dθ（必要なら re_numba の _dG_dtheta_numeric をここに移植）
