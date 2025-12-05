@@ -345,9 +345,6 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
     if not np.isscalar(phi_init):
         phi_init_arr = np.asarray(phi_init, dtype=float)
         if species_count is None or species_count != phi_init_arr.size:
-            # Prefer the actual initial-condition dimensionality over any
-            # inconsistent user-provided species_count to avoid shape errors
-            # inside the Newton solver.
             species_count = phi_init_arr.size
     elif species_count is None:
         species_count = 4
