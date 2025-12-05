@@ -60,8 +60,27 @@ jobs:
           from src.tsm import compute_tsm_sensitivity
           import numpy as np
 
+          def build_solver_config(model):
+              cfg = CONFIG[model].copy()
+              # Attach model-specific initial conditions and species masking
+              phi_key = f'phi_init_{model}'
+              active_key = f'active_species_{model}'
+              theta_key = f'theta_active_indices_{model}'
+
+              if phi_key in CONFIG:
+                  cfg['phi_init'] = CONFIG[phi_key]
+              if active_key in CONFIG:
+                  cfg['active_species'] = CONFIG[active_key]
+                  cfg.setdefault('species_count', len(CONFIG[active_key]))
+              else:
+                  cfg.setdefault('species_count', 4)
+              if theta_key in CONFIG:
+                  cfg['theta_indices'] = CONFIG[theta_key]
+
+              return cfg
+
           theta = get_theta_true()
-          config = get_model_config('M1', CONFIG)
+          config = build_solver_config('M1')
           S = compute_tsm_sensitivity(
               theta,
               config,

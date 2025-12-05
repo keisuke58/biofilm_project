@@ -292,8 +292,9 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
         provided, the following optional keys further tailor the
         sensitivity calculation:
 
-        - ``phi_init``: Local initial volume fractions (length ``num_species``)
-        - ``num_species``: Explicit species dimensionality (e.g., ``2``)
+        - ``phi_init`` / ``phi_init_M1``: Initial volume fraction
+        - ``active_species`` / ``active_species_M1``: Subset of active species
+        - ``species_count``: Explicit species dimensionality (e.g., ``2``)
         - ``theta_indices`` / ``theta_active_indices``: Mapping for
           Case-II parameter subsets (e.g., ``[0..4]`` for M1)
 
@@ -317,9 +318,8 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
 
     theta = np.asarray(theta, dtype=float)
     if active_theta_indices is None:
-        active_theta_indices = (
-            config.get("theta_indices") or config.get("theta_active_indices")
-        )
+        active_theta_indices = (config.get("theta_indices")
+                                or config.get("theta_active_indices"))
 
     active_idx = (list(range(len(theta))) if active_theta_indices is None
                   else list(active_theta_indices))
@@ -347,7 +347,8 @@ def compute_tsm_sensitivity(theta, config, active_theta_indices=None, use_analyt
         alpha_const=config.get("alpha_const", 100.0),
         phi_init=config.get("phi_init", 0.02),
         use_numba=config.get("use_numba", True),
-        species_count=config.get("num_species", config.get("species_count")),
+        active_species=config.get("active_species", config.get("active_species_M1")),
+        species_count=config.get("species_count"),
         theta_indices=config.get("theta_indices", config.get("theta_active_indices")),
     )
 
