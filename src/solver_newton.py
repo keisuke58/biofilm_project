@@ -317,13 +317,12 @@ class BiofilmNewtonSolver:
         self.maxtimestep = maxtimestep
         self.eps = eps
         self.Kp1 = Kp1
+        # Species dimensionality
+        if active_species is None and global_species_indices is not None:
+            active_species = list(global_species_indices)
 
-        active_hint = None if active_species is None else list(active_species)
-        if active_hint is None and global_species_indices is not None:
-            active_hint = list(global_species_indices)
-
-        if active_hint is not None:
-            inferred_species = len(active_hint)
+        if active_species is not None:
+            inferred_species = len(active_species)
         elif np.isscalar(phi_init):
             inferred_species = 4 if species_count is None else species_count
         else:
@@ -333,11 +332,11 @@ class BiofilmNewtonSolver:
         # If the provided indices reference the *global* 4-species layout (e.g., [2,3]
         # for M2), collapse them to the local [0, 1, ..., n-1] indexing used by the
         # reduced solver to avoid out-of-bounds masking inside theta_to_matrices.
-        if active_hint is not None:
-            if max(active_hint) >= self.n:
+        if inferred_active is not None:
+            if max(inferred_active) >= self.n:
                 active_species = list(range(self.n))
             else:
-                active_species = active_hint
+                active_species = inferred_active
 
         # Optional mapping that selects which five Case-II parameters belong to
         # a 2-species submodel (e.g., [0..4] for M1 or [5..9] for M2). When
