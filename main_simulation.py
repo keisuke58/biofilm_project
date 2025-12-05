@@ -13,22 +13,16 @@ def _save_timeseries(outputs: dict, output_dir: Path) -> None:
     model_name = outputs["model_name"]
     t = outputs["t"]
     g = outputs["g"]
+    n = outputs["n"]
 
     np.savez(output_dir / f"case2_{model_name}_timeseries.npz", t=t, g=g)
 
-    header_columns = [
-        "time",
-        "phi1",
-        "phi2",
-        "phi3",
-        "phi4",
-        "phi0",
-        "psi1",
-        "psi2",
-        "psi3",
-        "psi4",
-        "gamma",
-    ]
+    header_columns = ["time"]
+    header_columns += [f"phi{i+1}" for i in range(n)]
+    header_columns.append("phi0")
+    header_columns += [f"psi{i+1}" for i in range(n)]
+    header_columns.append("gamma")
+
     np.savetxt(
         output_dir / f"case2_{model_name}_timeseries.csv",
         np.column_stack([t, g]),
@@ -44,7 +38,8 @@ def _plot_timeseries(outputs: dict, output_dir: Path) -> None:
     model_name = outputs["model_name"]
     t = outputs["t"]
     g = outputs["g"]
-    phi = g[:, :4]
+    n = outputs["n"]
+    phi = g[:, :n]
 
     fig, ax = plt.subplots(figsize=(6.0, 4.0))
     for idx in range(phi.shape[1]):
@@ -69,7 +64,7 @@ def _run_model(model_name: str, config: dict | None = None) -> dict:
     t, g = solver.run_deterministic(theta_true, show_progress=True)
 
     print(f"{model_name}: t.shape={t.shape}, g.shape={g.shape}")
-    return {"model_name": model_name, "t": t, "g": g}
+    return {"model_name": model_name, "t": t, "g": g, "n": solver.n}
 
 
 def main():

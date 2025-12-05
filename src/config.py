@@ -54,9 +54,10 @@ def get_config(debug: bool):
             maxtimestep=25 if debug else 2500,
             c_const=100.0,
             alpha_const=100.0,
+            # Case II submodel: species 1-2 only
             num_species=2,
             global_species_indices=[0, 1],
-            phi_init=[0.2, 0.2],
+            phi_init=0.2,
             theta_indices=[0, 1, 2, 3, 4],
         ),
         M2=dict(
@@ -64,9 +65,10 @@ def get_config(debug: bool):
             maxtimestep=50 if debug else 5000,
             c_const=100.0,
             alpha_const=10.0,
+            # Case II submodel: species 3-4 only
             num_species=2,
             global_species_indices=[2, 3],
-            phi_init=[0.2, 0.2],
+            phi_init=0.2,
             theta_indices=[5, 6, 7, 8, 9],
         ),
         M3=dict(
@@ -75,8 +77,8 @@ def get_config(debug: bool):
             c_const=25.0,
             alpha_const=0.0,
             num_species=4,
-            global_species_indices=[0, 1, 2, 3],
-            phi_init=[0.02, 0.02, 0.02, 0.02],
+            active_species=None,
+            phi_init=0.02,
             theta_indices=[10, 11, 12, 13],
         ),
     )

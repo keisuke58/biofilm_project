@@ -113,8 +113,31 @@ except ImportError:
     print("⚠ Numba not available: using pure NumPy (slower)")
 
 
-def _normalize_phi_init(phi_init_cfg, species_count: int):
-    """Return a species_count-length φ₀ vector, handling scalar inputs gracefully."""
+def _normalize_phi_init(
+    phi_init_cfg,
+    species_count: int,
+    active_species: Optional[list[int]] = None,
+    *,
+    slice_active: bool = True,
+):
+    """
+    Normalize ``phi_init`` to the requested dimensionality and (optionally)
+    extract the active subset.
+
+    Parameters
+    ----------
+    phi_init_cfg : float | Sequence[float]
+        Scalar or iterable defining the initial volume fractions.
+    species_count : int
+        Total number of species in the solver state vector.
+    active_species : list[int] | None, optional
+        Indices of active species. When provided, values outside this set are
+        zeroed; if ``slice_active`` is True, the returned vector is reduced to
+        ``len(active_species)``.
+    slice_active : bool, default True
+        Whether to return only the active entries (True) or a full-length
+        vector with inactive entries set to zero (False).
+    """
 
     arr = np.asarray(phi_init_cfg, dtype=float)
     if arr.ndim == 0:  # scalar -> broadcast to the requested dimensionality
@@ -122,7 +145,22 @@ def _normalize_phi_init(phi_init_cfg, species_count: int):
 
     if arr.size < species_count:
         arr = np.pad(arr, (0, species_count - arr.size))
-    return arr[:species_count]
+    arr = arr[:species_count]
+
+    if active_species is None:
+        return arr
+
+    active_idx = np.asarray(active_species, dtype=int)
+    if np.any(active_idx >= species_count):
+        raise ValueError("active_species indices exceed species_count")
+
+    if slice_active:
+        return arr[active_idx]
+
+    active_vals = arr[active_idx]
+    full = np.zeros(species_count)
+    full[active_idx] = active_vals
+    return full
 
 
 def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
@@ -282,7 +320,12 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # M1 solver: TRUE 2-species submodel (species 1-2 only)
     cfg_M1 = get_model_config("M1", config)
     solver_M1 = BiofilmNewtonSolver(
-        phi_init=_normalize_phi_init(cfg_M1.get("phi_init", 0.2), cfg_M1["num_species"]),
+        phi_init=_normalize_phi_init(
+            cfg_M1.get("phi_init", 0.2),
+            cfg_M1["num_species"],
+            cfg_M1.get("active_species"),
+            slice_active=False,
+        ),
         species_count=cfg_M1["num_species"],
         theta_indices=cfg_M1.get("theta_indices"),
         use_numba=False,
@@ -293,7 +336,12 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # M2 solver: TRUE 2-species submodel (species 3-4 only)
     cfg_M2 = get_model_config("M2", config)
     solver_M2 = BiofilmNewtonSolver(
-        phi_init=_normalize_phi_init(cfg_M2.get("phi_init", 0.2), cfg_M2["num_species"]),
+        phi_init=_normalize_phi_init(
+            cfg_M2.get("phi_init", 0.2),
+            cfg_M2["num_species"],
+            cfg_M2.get("active_species"),
+            slice_active=False,
+        ),
         species_count=cfg_M2["num_species"],
         theta_indices=cfg_M2.get("theta_indices"),
         use_numba=False,
@@ -304,7 +352,12 @@ def hierarchical_case2(config: Optional[Dict] = None) -> HierarchicalResults:
     # M3 solver: Full 4-species model
     cfg_M3 = get_model_config("M3", config)
     solver_M3 = BiofilmNewtonSolver(
-        phi_init=_normalize_phi_init(cfg_M3.get("phi_init", 0.02), cfg_M3["num_species"]),
+        phi_init=_normalize_phi_init(
+            cfg_M3.get("phi_init", 0.02),
+            cfg_M3["num_species"],
+            cfg_M3.get("active_species"),
+            slice_active=False,
+        ),
         species_count=cfg_M3["num_species"],
         theta_indices=cfg_M3.get("theta_indices"),
         use_numba=HAS_NUMBA,
