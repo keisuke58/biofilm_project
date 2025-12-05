@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.config import CONFIG, get_theta_true
+from src.config import CONFIG, get_model_config, get_theta_true
 from src.solver_newton import BiofilmNewtonSolver
 
 def _save_timeseries(outputs: dict, output_dir: Path) -> None:
@@ -60,13 +60,12 @@ def _plot_timeseries(outputs: dict, output_dir: Path) -> None:
     plt.close(fig)
 
 
-def _run_model(model_name: str, phi_init_key: str) -> dict:
-    config = CONFIG
+def _run_model(model_name: str, config: dict | None = None) -> dict:
+    cfg = CONFIG if config is None else config
     theta_true = get_theta_true()
 
-    solver = BiofilmNewtonSolver(
-        phi_init=config[phi_init_key], use_numba=True, **config[model_name]
-    )
+    model_cfg = get_model_config(model_name, cfg)
+    solver = BiofilmNewtonSolver(use_numba=True, **model_cfg)
     t, g = solver.run_deterministic(theta_true, show_progress=True)
 
     print(f"{model_name}: t.shape={t.shape}, g.shape={g.shape}")
@@ -77,11 +76,7 @@ def main():
     output_dir = Path("results")
     output_dir.mkdir(exist_ok=True)
 
-    runs = [
-        _run_model("M1", "phi_init_M1"),
-        _run_model("M2", "phi_init_M2"),
-        _run_model("M3", "phi_init_M3"),
-    ]
+    runs = [_run_model(model_name) for model_name in ("M1", "M2", "M3")]
 
     for run_output in runs:
         _save_timeseries(run_output, output_dir)
